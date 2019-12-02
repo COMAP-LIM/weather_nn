@@ -1,15 +1,16 @@
 import numpy as np
-import os, glob
+import os, glob, sys
 import random
 import h5py
 import matplotlib.pyplot as plt
-from matplotlib.offsetbox import AnchoredText
 import seaborn as sns
 
-from sklearn.model_selection import train_test_split
+import scipy as sp
+import scipy.interpolate
+
 from sklearn.metrics import confusion_matrix
 from scipy.optimize import curve_fit
-
+from split_train_test import split_train_test
 
 from keras.models import Sequential
 from keras.layers import Dense
@@ -24,9 +25,8 @@ from keras.layers import Input
 from keras.layers.merge import concatenate
 from keras.models import load_model
 
-random.seed(24)
 
-def read_data(textfile, preprocess=True):
+def read_data(textfile):
     f = open(textfile, 'r')
     lines = f.readlines()
     data = []
@@ -47,11 +47,10 @@ def read_data(textfile, preprocess=True):
         index.append((index1, index2))
         path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/' + month + '/'
         with h5py.File(path + filename, 'r') as hdf:
-            tod      = np.array(hdf['spectrometer/band_average'])
-            el       = np.array(hdf['spectrometer/pixel_pointing/pixel_el'][0])
-            az       = np.array(hdf['spectrometer/pixel_pointing/pixel_az'][0])
-            features = np.array(hdf['spectrometer/features'])
-        
+            tod       = np.array(hdf['spectrometer/band_average'])
+            el        = np.array(hdf['spectrometer/pixel_pointing/pixel_el'][0])
+            az        = np.array(hdf['spectrometer/pixel_pointing/pixel_az'][0])
+            features  = np.array(hdf['spectrometer/features'])
 
         tod = np.nanmean(tod, axis=1)
         tod = np.nanmean(tod, axis=0)
@@ -64,18 +63,17 @@ def read_data(textfile, preprocess=True):
             boolTsys[:np.min(indexTsys)] = False
             boolTsys[np.max(indexTsys):] = False
 
-        tod = tod[boolTsys]
-        el  = el[boolTsys]
-        az  = az[boolTsys]
+        tod       = tod[boolTsys]
+        el        = el[boolTsys]
+        az        = az[boolTsys]
 
-        # Choosing only the subsequence
-        tod = tod[index1:index2]
-        el  = el[index1:index2]
-        az  = az[index1:index2]
+        # Extracting subsequence
+        tod       = tod[index1:index2]
+        el        = el[index1:index2]
+        az        = az[index1:index2]
 
         # Preprocessing
-        if preprocess:
-            tod = preprocess_data(tod, el, az, obsids[-1], index[-1])
+        tod = preprocess_data(tod, el, az, obsids[-1], index[-1])
 
         data.append(tod)
     return np.array(data), np.array(labels), index,  obsids
@@ -149,9 +147,14 @@ def preprocess_data(data, el, az, obsid, index):
 
 
 
-def load_dataset(preprocess=True):
-    X_train, y_train, index_train, obsids_train = read_data('data/training_data.txt', preprocess=preprocess)
-    X_test, y_test, index_test, obsids_test = read_data('data/testing_data.txt', preprocess=preprocess)
+def load_dataset(random=False):
+    if random:
+        split_train_test('training_data_random.txt', 'testing_data_random.txt')
+        X_train, y_train, index_train, obsids_train = read_data('data/training_data_random.txt')
+        X_test, y_test, index_test, obsids_test = read_data('data/testing_data_random.txt')    
+    else:
+        X_train, y_train, index_train, obsids_train = read_data('data/training_data_2.txt')
+        X_test, y_test, index_test, obsids_test = read_data('data/testing_data_2.txt')
 
     print('Training samples:', len(y_train))
     print('Testing samples:', len(y_test))
@@ -166,8 +169,8 @@ def load_dataset(preprocess=True):
     return X_train, y_train, X_test, y_test, index_test, obsids_test
 
 
-# Fit and evaluate a model
-def evaluate_model(X_train, y_train, X_test, y_test, save_model=False):
+
+def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
     verbose, epochs, batch_size = 1, 15, 64 
     n_timesteps, n_outputs = X_train.shape[1], y_train.shape[1]
     adam = optimizers.Adam(lr=1e-4)
@@ -176,9 +179,11 @@ def evaluate_model(X_train, y_train, X_test, y_test, save_model=False):
     model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
     model.add(Dropout(0.4))
     model.add(MaxPooling1D(pool_size=3))
+    model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
     model.add(Flatten())
     model.add(Dense(128, activation='relu'))
     model.add(Dropout(0.5))
+    model.add(Dense(16, activation='relu')) ##
     model.add(Dense(n_outputs, activation='softmax'))
     model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
    
@@ -192,10 +197,10 @@ def evaluate_model(X_train, y_train, X_test, y_test, save_model=False):
         model.save("weathernet.h5")
         print("Saved model to disk")
 
-    return accuracy, history
+    return model, accuracy, history
 
 
-def plot_history(history):
+def plot_history(history, save_figure=False):
     plt.figure()
     plt.plot(history.history['accuracy'])
     plt.plot(history.history['val_accuracy'])
@@ -204,7 +209,8 @@ def plot_history(history):
     plt.legend(['Train data', 'Testing data'], loc='upper left')
     plt.grid()
     plt.title('Model accuracy')
-    #plt.savefig('history_accuracies.png')
+    if save_figure:
+        plt.savefig('history_accuracies.png')
 
     plt.figure()
     plt.plot(history.history['loss'])
@@ -215,16 +221,17 @@ def plot_history(history):
     plt.grid()
     plt.ylim((-0.1, 2))
     plt.legend(['Training data', 'Testing data'], loc='upper left')
-    #plt.savefig('history_loss.png')
+    if save_figure:
+        plt.savefig('history_loss.png')
     plt.show()
 
 
 def mean_accuracy(runs=10):
-    trainX, trainy, testX, testy = load_dataset()
-    
+    trainX, trainy, testX, testy, index_test, obsids_test = load_dataset()
     accuracies = []
     for r in range(runs):
-        accuracy, _ = evaluate_model(trainX, trainy, testX, testy)
+        accuracy, _ = evaluate_CNN(trainX, trainy, testX, testy)
+
         accuracy = accuracy * 100.0
         print('>#%d: %.3f' % (r+1, accuracy))
         accuracies.append(accuracy)
@@ -234,7 +241,7 @@ def mean_accuracy(runs=10):
     print('Accuracy: %.3f%% (+/-%.3f)' % (m, std))
 
 
-def analyse_classification_results(model, X_test, y_test, index_test, obsids_test):
+def analyse_classification_results(model, X_test, y_test, index_test, obsids_test, plot=False):
     predictions = model.predict(X_test)
     y_pred = predictions.argmax(axis=-1)
     y_true = y_test.argmax(axis=-1)
@@ -245,38 +252,58 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
     print('Normalized confusion matrix:')
     print(cm/np.shape(y_test)[0])
 
-    for k in range(len(y_test)):
-        ymin = np.min(X_test[k]) -1
-        ymax = np.max(X_test[k]) +2
-        subseq = int(index_test[k][1]/30000)
-        if y_pred[k] == 0 and y_true[k] == 1:
-            plt.figure(figsize=(5,3))
-            plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
-            plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
-            plt.text(index_test[k][1]-1e4, 2, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
-            plt.ylim(ymin,ymax)
-            plt.grid()
-            plt.tight_layout()
-            plt.savefig('figures/fn_%s_%d.png' %(obsids_test[k], subseq))
-            plt.show()
+    # evaluate model
+    _, accuracy = model.evaluate(X_test, y_test, batch_size=64, verbose=0)
+    print('Accuracy: ', accuracy)
+
+    if plot:
+        for k in range(len(y_test)):
+            ymin = np.min(X_test[k]) -1
+            ymax = np.max(X_test[k]) +2
+            subseq = int(index_test[k][1]/30000)
+            if y_pred[k] == 0 and y_true[k] == 1:
+                plt.figure(figsize=(5,3))
+                plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
+                plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
+                plt.text(index_test[k][1]-1e4, 2, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
+                plt.ylim(ymin,ymax)
+                plt.grid()
+                plt.tight_layout()
+                plt.savefig('figures/fn_%s_%d.png' %(obsids_test[k], subseq))
+                plt.show()
     
-        if y_pred[k] == 1 and y_true[k] == 0:
-            plt.figure(figsize=(5,3))
-            plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
-            plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
-            plt.text(index_test[k][1]-1e4, 2, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
-            plt.ylim(ymin,ymax)
-            plt.grid()
-            plt.tight_layout()
-            plt.savefig('figures/fp_%s_%d.png' %(obsids_test[k], subseq))
-            plt.show()
+            if y_pred[k] == 1 and y_true[k] == 0:
+                plt.figure(figsize=(5,3))
+                plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
+                plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
+                plt.text(index_test[k][1]-1e4, 2, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
+                plt.ylim(ymin,ymax)
+                plt.grid()
+                plt.tight_layout()
+                plt.savefig('figures/fp_%s_%d.png' %(obsids_test[k], subseq))
+                plt.show()
+    return cm, fn_obs
 
 
-X_train, y_train, X_test, y_test, index_test, obsids_test = load_dataset()
-accuracy, _ = evaluate_model(X_train, y_train, X_test, y_test, save_model=True)
-print('Accuracy:', accuracy)
+if __name__ == '__main__':
+    cms = []
+    acc = []
+    fn_obs_all = []
+    for i in range(10):
+        X_train, y_train, X_test, y_test, index_test, obsids_test = load_dataset(random=True)
+        model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False)
+        cm, fn_obs = analyse_classification_results(model, X_test, y_test, index_test, obsids_test)
+        cms.append(cm)
+        acc.append(accuracy)
+        fn_obs_all.append(fn_obs)
 
-# load model
-model = load_model('weathernet.h5')
-model.summary()
-analyse_classification_results(model, X_test, y_test, index_test, obsids_test)
+    for i in range(10):
+        print(cms[i])
+        print()
+
+    print(fn_obs_all)
+    
+    print(acc)
+    m, std = np.mean(acc), np.std(acc)
+    print('Accuracy: %.3f%% (+/-%.3f)' % (m, std))
+
