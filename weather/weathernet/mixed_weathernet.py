@@ -13,7 +13,7 @@ from keras.layers import Input
 from keras.layers.merge import concatenate
 from keras.models import load_model
 
-from CNN_weathernet import read_data
+from CNN_weathernet import read_data, plot_history
 from NN_weathernet import read_weather_data
 from split_train_test import split_train_test 
 
@@ -33,12 +33,11 @@ def load_dataset(random=False):
         X_test_NN, y_test, index_test, obsids_test = read_weather_data('data/testing_data_random.txt')
         
     else:
-        print('Reading in data')
-        X_train_CNN, y_train, index_train, obsids_train = read_data('data/training_data.txt')
-        X_test_CNN, y_test, index_test, obsids_test = read_data('data/testing_data.txt')
+        X_train_CNN, y_train, index_train, obsids_train = read_data('data/training_data_even_more_good.txt')
+        X_test_CNN, y_test, index_test, obsids_test = read_data('data/testing_data_even_more_good.txt')
 
-        X_train_NN, y_train, index_train, obsids_train = read_data('data/training_data.txt')
-        X_test_NN, y_test, index_test, obsids_test = read_data('data/testing_data.txt')
+        X_train_NN, y_train, index_train, obsids_train = read_data('data/training_data_even_more_good.txt')
+        X_test_NN, y_test, index_test, obsids_test = read_data('data/testing_data_even_more_good.txt')
 
 
     print('Training samples:', len(y_train))
@@ -47,7 +46,7 @@ def load_dataset(random=False):
     X_train_CNN = X_train_CNN.reshape(len(y_train), np.shape(X_train_CNN)[1],1)
     X_test_CNN = X_test_CNN.reshape(len(y_test), np.shape(X_test_CNN)[1],1)
 
-    # Convert label array to one-hot encoding                                                                                     
+    # Convert label array to one-hot encoding
     y_train = to_categorical(y_train, 2)
     y_test = to_categorical(y_test, 2)
 
@@ -80,8 +79,8 @@ def mixed_weathernet():
 
     combined = concatenate([x.output, y.output])
 
-    z = Dense(8, activation='relu')(combined)
-    z = Dense(n_outputs, activation='softmax')(z)
+    #z = Dense(8, activation='relu')(combined)
+    z = Dense(n_outputs, activation='softmax')(combined)
 
     model = Model(inputs=[x.input, y.input], outputs=z)
     model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
@@ -90,8 +89,25 @@ def mixed_weathernet():
     history = model.fit([X_train_NN, X_train_CNN], y_train, epochs=epochs, batch_size=batch_size, verbose=verbose, validation_data=([X_test_NN, X_test_CNN], y_test))
 
     _, accuracy = model.evaluate([X_test_NN, X_test_CNN], y_test, batch_size=64, verbose=0)
-    print(accuracy)
+    
+    return history, accuracy
 
-mixed_weathernet() 
+def mean_accuracy(runs=10):
+    accuracies = []
+    for r in range(runs):
+        _, accuracy  = mixed_weathernet()
+
+        accuracy = accuracy * 100.0
+        print('>#%d: %.3f' % (r+1, accuracy))
+        accuracies.append(accuracy)
+
+    print(accuracies)
+    m, std = np.mean(accuracies), np.std(accuracies)
+    print('Accuracy: %.3f%% (+/-%.3f)' % (m, std))
 
 
+mean_accuracy()
+#history, accuracy = mixed_weathernet() 
+
+#print('Accuracy: ', accuracy)
+#plot_history(history)

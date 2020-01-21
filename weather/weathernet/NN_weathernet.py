@@ -60,10 +60,9 @@ def read_weather_data(textfile):
             tod_length = np.shape(np.array(hdf['spectrometer/band_average']))[2]
             weather_length = len(temp)
 
-        features = [np.mean(temp), np.mean(dewpoint), np.mean(pressure), np.mean(rain), \
-                    np.mean(humidity), np.mean(status), np.mean(winddeg), np.mean(windspeed)]
+        #features = [np.mean(temp), np.mean(dewpoint), np.mean(pressure), np.mean(rain), \
+        #            np.mean(humidity), np.mean(status), np.mean(winddeg), np.mean(windspeed)]
         
-        """
         # Making bolean array for Tsys measurements                
         boolTsys = (features != 8192)
         indexTsys = np.where(boolTsys==False)[0]
@@ -85,6 +84,7 @@ def read_weather_data(textfile):
         winddeg_new = sp.interpolate.interp1d(x, winddeg)(x_new)[boolTsys]
         windspeed_new = sp.interpolate.interp1d(x, windspeed)(x_new)[boolTsys]
 
+        """
         # Extracting subsequence and calculating the mean  
         temp_new = np.mean(temp_new[index1:index2])
         dewpoint_new = np.mean(dewpoint_new[index1:index2])
@@ -98,7 +98,27 @@ def read_weather_data(textfile):
         features = [temp_new, dewpoint_new, pressure_new, rain_new, humidity_new, \
                      status_new, winddeg_new, windspeed_new]
         """
+        
+        # Extracting subsequence and calculating the mean  
+        temp_new = temp_new[index1:index2]
+        dewpoint_new = dewpoint_new[index1:index2]
+        pressure_new = pressure_new[index1:index2]
+        rain_new = rain_new[index1:index2]
+        humidity_new = humidity_new[index1:index2]
+        status_new = status_new[index1:index2]
+        winddeg_new = winddeg_new[index1:index2]
+        windspeed_new = windspeed_new[index1:index2]
 
+        features = [temp_new, dewpoint_new, pressure_new, rain_new, humidity_new, \
+                     status_new, winddeg_new, windspeed_new]
+
+        """
+        for i in range(len(features)):
+            if np.max(features[i]) == np.min(features[i]):
+                features[i] = features[i]
+            else:
+                features[i] = (features[i] - np.min(features[i]))/(np.max(features[i]) - np.min(features[i]))
+        """
         data.append(features)
 
     return np.array(data), np.array(labels), index, obsids
@@ -116,6 +136,10 @@ def load_dataset(random=False):
     print('Training samples:', len(y_train))
     print('Testing samples:', len(y_test))
 
+    X_train = X_train.reshape(len(y_train), np.shape(X_train)[2],np.shape(X_test)[1])
+    X_test = X_test.reshape(len(y_test), np.shape(X_test)[2],np.shape(X_test)[1])
+
+
     # Convert label array to one-hot encoding
     y_train = to_categorical(y_train, 2)
     y_test = to_categorical(y_test, 2)
@@ -125,27 +149,55 @@ def load_dataset(random=False):
 
 def evaluate_NN(X_train, y_train, X_test, y_test, save_model=False):
     verbose, epochs, batch_size = 1, 1500, 64
-    n_features, n_outputs = X_train.shape[1], y_train.shape[1]
-    adam = optimizers.Adam(lr=1e-5)
+    print(np.shape(X_train))
+    n_features, n_timepoints, n_outputs = X_train.shape[1], X_train.shape[2], y_train.shape[1]
+    adam = optimizers.Adam(lr=1e-3)
     model = Sequential()
-    model.add(Dense(32, activation='relu', input_shape=(n_features,)))
+    model.add(Dense(32, activation='relu', input_shape=(n_features,n_timepoints)))
     model.add(Dense(16, activation='relu'))
+    model.add(Flatten())
     model.add(Dense(2, activation='softmax'))
     model.compile(optimizer=adam,
                 loss='categorical_crossentropy',
                 metrics=['accuracy'])
-
     # fit network     
     history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=verbose,validation_data=(X_test, y_test))
 
     # evaluate model                            
     _, accuracy = model.evaluate(X_test, y_test, batch_size=batch_size, verbose=0)
 
+
     if save_model:
         model.save("weathernet_NN.h5")
         print("Saved model to disk")
 
     return accuracy, history
+
+def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
+    verbose, epochs, batch_size = 1, 15, 64
+    n_features, n_timesteps, n_outputs= X_train.shape[1], X_train.shape[2], y_train.shape[1]
+    input_shape = X_train.shape[1:]
+    adam = optimizers.Adam(lr=1e-4)
+    model = Sequential()
+    model.add(Conv1D(filters=32, kernel_size=6, activation='relu', input_shape=(n_features,n_timesteps)))
+    model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
+    model.add(Dropout(0.4))
+    model.add(MaxPooling1D(pool_size=2)) 
+    model.add(Flatten())
+    model.add(Dropout(0.5))
+    model.add(Dense(128, activation='relu')) 
+    model.add(Dense(16, activation='relu')) 
+    model.add(Dense(n_outputs, activation='softmax'))
+    model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
+    # fit network     
+    history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=verbose,validation_data=(X_test, y_test))
+
+    # evaluate model                            
+    _, accuracy = model.evaluate(X_test, y_test, batch_size=batch_size, verbose=0)
+
+    return accuracy, history
+
+
 
 def plot_history(history, save_figure = False):
     plt.figure()
@@ -177,7 +229,7 @@ def mean_accuracy(runs=10):
     trainX, trainy, testX, testy, index_test, obsids_test = load_dataset()
     accuracies = []
     for r in range(runs):
-        accuracy, _ = evaluate_NN(trainX, trainy, testX, testy)
+        accuracy, _ = evaluate_CNN(trainX, trainy, testX, testy)
 
         accuracy = accuracy * 100.0
         print('>#%d: %.3f' % (r+1, accuracy))
@@ -190,3 +242,7 @@ def mean_accuracy(runs=10):
 
 if __name__ == '__main__':
     mean_accuracy(runs=10)
+    #trainX, trainy, testX, testy, index_test, obsids_test = load_dataset()
+    #accuracy, history = evaluate_CNN(trainX, trainy, testX, testy)
+    #plot_history(history)
+    #print('Accurcay: ', accuracy)

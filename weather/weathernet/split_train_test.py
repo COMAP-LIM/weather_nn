@@ -16,19 +16,35 @@ def split_train_test(filename_train, filename_test):
     n = len(bad_lines)
 
     # Choose n random files    
-    good_lines_subset = random.sample(good_lines, n)
+    good_lines_subset = random.sample(good_lines, n + 500)
     bad_lines_subset = random.sample(bad_lines, n)
 
-    for i in range(n):
+    for i in range(len(good_lines_subset)):
         good_lines_subset[i] = good_lines_subset[i][:-2] + '    0\n'
+    
+    for i in range(len(bad_lines_subset)):
         bad_lines_subset[i] = bad_lines_subset[i][:-2] + '    1\n'
 
-    all_lines = good_lines_subset + bad_lines_subset
-    random.shuffle(all_lines)
+    n_tot = len(good_lines_subset) + len(bad_lines_subset)
 
-    training_set = all_lines[:int(0.75*len(all_lines))]
-    testing_set = all_lines[int(0.75*len(all_lines)):]
+    # Ensuring that there are the same amount of bad and good data in the testing samples.
+    # Don't want to use more than 25% of the bad data as testing data, since we 
+    # have limited bad data. 
+    n_test_samples = int(len(bad_lines_subset)*0.25)
+    
+    # If 25% of the bad data is more than 12.5% of all the data, use 12.5% of all data as 
+    # the number of testing samples
+    if n_test_samples > n_tot*0.125:
+        n_test_samples = n_tot*0.125
+    
+    random.shuffle(good_lines_subset)
+    random.shuffle(bad_lines_subset)
+    testing_set = good_lines_subset[:n_test_samples] + bad_lines_subset[:n_test_samples]
 
+    training_set = good_lines_subset[n_test_samples:] + bad_lines_subset[n_test_samples:]
+    
+    random.shuffle(training_set)
+    random.shuffle(testing_set)
 
     f1 = open('data/' + filename_train, 'w')
     f2 = open('data/' + filename_test, 'w')
@@ -38,7 +54,11 @@ def split_train_test(filename_train, filename_test):
     for i in range(len(testing_set)):
         f2.write(testing_set[i])
 
+
 if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        print('Usage: python split_train_test.py filename_train filename_test')
+        sys.exit()
     filename_train = sys.argv[1]
     filename_test = sys.argv[2]
-    split_test_train(filename_train,  filename_test)
+    split_train_test(filename_train,  filename_test)
