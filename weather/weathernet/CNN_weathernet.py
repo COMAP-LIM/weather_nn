@@ -41,7 +41,7 @@ def read_data(textfile):
         index2 = int(line.split()[2])
         label = int(line.split()[3])
         month = filename[14:21]
-        obsid = filename[9:13]
+        obsid = int(filename[9:13])
 
         labels.append(label)
         obsids.append(obsid)
@@ -128,7 +128,8 @@ def preprocess_data(data, el, az, obsid, index):
 
     # Normalizing 
     data = (data - np.mean(data))/np.std(data)
-   
+
+    #data = data[::10]
     return data, ps
 
 
@@ -146,15 +147,19 @@ def power_spectrum(data):
     return ps_binned/ps_binned_2/1e6#1e18
 
 def load_dataset_fromfile():
-    with h5py.File('dataset_new.h5', 'r') as hdf:
+    with h5py.File('dataset.h5', 'r') as hdf:
             X_train = np.array(hdf['X_train'])
             y_train = np.array(hdf['y_train'])
             ps_train  = np.array(hdf['ps_train'])
             X_test  = np.array(hdf['X_test'])
             y_test  = np.array(hdf['y_test'])
             ps_test  = np.array(hdf['ps_test'])
+            index_test  = np.array(hdf['index_test'])
+            obsids_test  = np.array(hdf['obsids_test'])
 
-    return X_train, y_train, ps_train, X_test, y_test, ps_test
+
+    return X_train, y_train, ps_train, X_test, y_test, ps_test,  index_test, obsids_test
+
 
 
 def load_dataset(random=False):
@@ -179,17 +184,16 @@ def load_dataset(random=False):
     y_train = to_categorical(y_train, 2)
     y_test = to_categorical(y_test, 2)
 
-    """
-    with h5py.File('dataset_new.h5', 'w') as hdf:
+    with h5py.File('dataset.h5', 'w') as hdf:
         hdf.create_dataset('X_train', data=X_train)
         hdf.create_dataset('y_train', data=y_train)
-        hdf.create_dataset('ps_train', data=ps_train)
         hdf.create_dataset('X_test', data=X_test)
         hdf.create_dataset('y_test', data=y_test)
+        hdf.create_dataset('ps_train', data=ps_train)
         hdf.create_dataset('ps_test', data=ps_test)
-        #hdf.create_dataset('index_test', data=index_test)
-        #hdf.create_dataset('obsids_test', data=obsids_test)
-    """
+        hdf.create_dataset('index_test', data=index_test)
+        hdf.create_dataset('obsids_test', data=obsids_test)
+
 
     return X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test
 
@@ -297,7 +301,7 @@ def evaluate_NN(ps_train, y_train, ps_test, y_test, save_model=False):
     
 
 def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
-    verbose, epochs, batch_size = 1, 40, 64
+    verbose, epochs, batch_size = 1, 40, 64#128 #64
     n_timesteps, n_features, n_outputs = X_train.shape[1], X_train.shape[2], y_train.shape[1]
     adam = optimizers.Adam(lr=1e-4)
 
@@ -443,8 +447,8 @@ def heatmap_convolving_layers():
     
 
 if __name__ == '__main__':
-    X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test = load_dataset()
-    #X_train, y_train, ps_train, X_test, y_test, ps_test = load_dataset_fromfile()
+    #X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test = load_dataset()
+    X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test = load_dataset_fromfile()
     #history, accuracy = evaluate_CNN_with_ps_v2(X_train, y_train, ps_train, X_test, y_test, ps_test)
     #history, accuracy = evaluate_CNN_with_ps(X_train, y_train, ps_train, X_test, y_test, ps_test)
     model, history, accuracy = evaluate_CNN(X_train, y_train, X_test, y_test)
