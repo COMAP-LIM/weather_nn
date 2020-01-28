@@ -26,7 +26,7 @@ from keras.layers.merge import concatenate
 from keras.models import load_model
 from keras.utils import plot_model
 
-def read_data(textfile):
+def read_data(textfile, generate_more_data=False, n=10):
     f = open(textfile, 'r')
     lines = f.readlines()
     data = []
@@ -71,8 +71,14 @@ def read_data(textfile):
         az        = az[index1:index2]
 
         # Preprocessing
-        tod, ps = preprocess_data(tod, el, az, obsids[-1], index[-1])
- 
+        tod = preprocess_data(tod, el, az, obsids[-1], index[-1])
+
+        # Calculating power spectrum
+        ps = calculate_power_spectrum(tod)
+
+        # Normalizing
+        tod = normalize(tod)
+
         data.append(tod)
         power_spectrum.append(ps)
     
@@ -124,16 +130,16 @@ def preprocess_data(data, el, az, obsid, index):
     # Removing elevation gain 
     data = data - g/np.sin(el*np.pi/180) - a*az + diff 
 
-    ps = power_spectrum(data)
+    #data = data[::10]
+    return data
 
-    # Normalizing 
+def normalize(data):
     data = (data - np.mean(data))/np.std(data)
 
-    #data = data[::10]
-    return data, ps
+    return data
 
 
-def power_spectrum(data):
+def calculate_power_spectrum(data):
     ps = np.abs(np.fft.fft(data))**2
     freqs = np.fft.fftfreq(len(data))
 
@@ -160,6 +166,76 @@ def load_dataset_fromfile():
 
     return X_train, y_train, ps_train, X_test, y_test, ps_test,  index_test, obsids_test
 
+def create_dataset_v2(path_good, path_bad, n=False):
+    random.seed(24)
+    
+    files_good = glob.glob(path_good + '*.hd5')
+    files_bad = glob.glob(path_bad + '*.hd5')
+    labels_good = [0] * len(files_good)
+    labels_bad = [1] * len(files_bad)
+
+    random.shuffle(files_good)
+    random.shuffle(files_bad)
+
+    n_test_samples = int(0.125*(len(files_good) + len(files_bad)))
+    # Do not want to use more than 25 % of the bad data as testing data
+    if n_test_samples > 0.25*len(files_bad):
+        n_test_samples = int(0.25*len(files_bad))
+
+
+    testing_data = files_good[:n_test_samples] + files_bad[:n_test_samples]
+    testing_labels = labels_good[:n_test_samples] + labels_bad[:n_test_samples]
+    training_data = files_good[n_test_samples:] + files_bad[n_test_samples:]
+    training_labels = labels_good[n_test_samples:] + labels_bad[n_test_samples:]
+
+    # Shuffling the filenames and labels to the same order
+    testing_set = list(zip(testing_data, testing_labels))
+    random.shuffle(testing_set)
+    testing_data, testing_labels = zip(*testing_set)
+
+    training_set = list(zip(training_data, training_labels))
+    random.shuffle(training_set)
+    training_data, training_labels = zip(*training_set)
+
+    # Read files
+    X_train, ps_train, indices_train, obsids_train = read_files(training_data)
+    X_test, ps_test, indices_test, obsids_test = read_files(testing_data)
+
+    X_train = X_train.reshape(len(obsids_train), np.shape(X_train)[1],1)
+    X_test = X_test.reshape(len(obsids_test), np.shape(X_test)[1],1)
+
+    print('Training samples: %d  (%.1f percent)' %(len(training_labels), 100*len(training_labels)/(len(training_labels) + len(testing_labels))))
+    print('Testing samples: %d  (%.1f percent)' %(len(testing_labels), 100*len(testing_labels)/(len(training_labels) + len(testing_labels)))) 
+    print('Of the testing samples, %d is bad weather.' %np.sum(training_labels))
+    print('Of the training samples, %d is bad weather.' %np.sum(testing_labels))
+
+
+    # Convert label array to one-hot encoding
+    y_train = to_categorical(training_labels, 2)
+    y_test = to_categorical(testing_labels, 2)
+
+    return X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test
+
+
+def read_files(files):
+    data = []
+    power_spectra =  []
+    obsids = []
+    indices = []
+
+    for filename in files:
+        with h5py.File(filename, 'r') as hdf:
+            tod   = np.array(hdf['tod'])
+            ps    = np.array(hdf['ps'])
+            obsid = np.array(hdf['obsid'])
+            index = np.array(hdf['index'])
+
+            data.append(tod)
+            power_spectra.append(ps)
+            obsids.append(obsid)
+            indices.append(index)
+
+    return np.array(data), np.array(power_spectra), indices, obsids
 
 
 def load_dataset(random=False):
@@ -301,14 +377,14 @@ def evaluate_NN(ps_train, y_train, ps_test, y_test, save_model=False):
     
 
 def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
-    verbose, epochs, batch_size = 1, 40, 64#128 #64
+    verbose, epochs, batch_size = 1, 15, 64 #256#128 #64
     n_timesteps, n_features, n_outputs = X_train.shape[1], X_train.shape[2], y_train.shape[1]
     adam = optimizers.Adam(lr=1e-4)
 
     model = Sequential()
     model.add(Conv1D(filters=32, kernel_size=6, activation='relu', input_shape=(n_timesteps,n_features)))
     model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
-    model.add(Dropout(0.4))
+    model.add(Dropout(0.4)) #0.4
     model.add(MaxPooling1D(pool_size=3))
     model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
     model.add(Flatten())
@@ -394,6 +470,10 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
             ymax = np.max(X_test[k]) +2
             subseq = int(index_test[k][1]/30000)
             if y_pred[k] == 0 and y_true[k] == 1:
+                print(obsids_test[k])
+                print(y_pred[k], y_true[k])
+                print(predictions[k])
+                print()
                 plt.figure(figsize=(5,3))
                 plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
                 plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
@@ -405,6 +485,10 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
                 plt.show()
     
             if y_pred[k] == 1 and y_true[k] == 0:
+                print(obsids_test[k])
+                print(y_pred[k], y_true[k])
+                print(predictions[k])
+                print()
                 plt.figure(figsize=(5,3))
                 plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
                 plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
@@ -447,18 +531,19 @@ def heatmap_convolving_layers():
     
 
 if __name__ == '__main__':
-    #X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test = load_dataset()
-    X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test = load_dataset_fromfile()
+    #X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = load_dataset()
+    #X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test = load_dataset_fromfile()
     #history, accuracy = evaluate_CNN_with_ps_v2(X_train, y_train, ps_train, X_test, y_test, ps_test)
     #history, accuracy = evaluate_CNN_with_ps(X_train, y_train, ps_train, X_test, y_test, ps_test)
-    model, history, accuracy = evaluate_CNN(X_train, y_train, X_test, y_test)
+    #model, history, accuracy = evaluate_CNN(X_train, y_train, X_test, y_test)
     #model, accuracy, history = evaluate_NN(ps_train, y_train, ps_test, y_test, save_model=False)
-    print(accuracy)
+    #print(accuracy)
 
-    #heatmap_convolving_layers()
-    #mean_accuracy()
-    #X_train, y_train, X_test, y_test, index_test, obsids_test = load_dataset(random=False)
-    #model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False)
-    #analyse_classification_results(model, X_test, y_test, index_test, obsids_test)
-    #print('Accuracy: ', accuracy)
-    #plot_history(history, save=True)
+    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset_v2('good_samples/', 'bad_samples/')
+    #model = load_model('CNN_weathernet.h5')
+    model, history, accuracy = evaluate_CNN(X_train, y_train, X_test, y_test)
+    analyse_classification_results(model, X_test, y_test, indices_test, obsids_test, plot=True)
+
+    # Ser ut som at jeg kan ha vært litt upresis på klassifiseringen jeg har gjort by-eye. Ser ut som 
+    # noen samples med ca like mye struktur er labeled forskjellig. Burde ta hensyn til power scale. 
+    # Var også av ca 26 samples, 1 eller 2 spike-samples som ble klassifisert som vær. 

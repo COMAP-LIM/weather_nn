@@ -57,8 +57,6 @@ def remove_elevation_gain(X, g, a, c, d, e):
     return  g/np.sin(el*np.pi/180) + az*a + c + d*t + e*t**2
 
 
-
-
 def preprocess_data(data, el, az, obsid, index):
     # Normalizing by dividing each feed on its own mean
     for i in range(np.shape(data)[0]):
@@ -95,16 +93,6 @@ def generate_data(data):
     std = np.sqrt(ps)
     fourier_coeffs = np.sqrt(2)*(np.random.normal(loc=0, scale=std) + 1j*np.random.normal(loc=0, scale=std))
     new_data = np.fft.irfft(fourier_coeffs)
-
-    new_data2 = np.fft.irfft(np.fft.rfft(data))
-    print(np.fft.rfft(data))
-    
-    print(len(new_data2))
-    plt.figure()
-    plt.plot(new_data)
-    plt.figure()
-    plt.plot(new_data2)
-    plt.show()
 
     return new_data
 
