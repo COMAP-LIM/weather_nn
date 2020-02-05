@@ -9,6 +9,7 @@ import scipy as sp
 import scipy.interpolate
 
 from sklearn.metrics import confusion_matrix
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.optimize import curve_fit
 from split_train_test import split_train_test
 
@@ -24,7 +25,8 @@ from keras.models import Model
 from keras.layers import Input
 from keras.layers.merge import concatenate
 from keras.models import load_model
-from keras.utils import plot_model
+from keras.utils.vis_utils import plot_model
+
 
 def read_data(textfile, generate_more_data=False, n=10):
     f = open(textfile, 'r')
@@ -200,6 +202,12 @@ def create_dataset_v2(path_good, path_bad, n=False):
     # Read files
     X_train, ps_train, indices_train, obsids_train = read_files(training_data)
     X_test, ps_test, indices_test, obsids_test = read_files(testing_data)
+
+    std = np.std(X_train)
+    X_train = X_train/std
+    X_test = X_test/std
+
+    print(std)
 
     X_train = X_train.reshape(len(obsids_train), np.shape(X_train)[1],1)
     X_test = X_test.reshape(len(obsids_test), np.shape(X_test)[1],1)
@@ -377,19 +385,19 @@ def evaluate_NN(ps_train, y_train, ps_test, y_test, save_model=False):
     
 
 def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
-    verbose, epochs, batch_size = 1, 15, 64 #256#128 #64
+    verbose, epochs, batch_size = 1, 15, 128 #64
     n_timesteps, n_features, n_outputs = X_train.shape[1], X_train.shape[2], y_train.shape[1]
-    adam = optimizers.Adam(lr=1e-4)
+    adam = optimizers.Adam(lr=1e-5)
 
     model = Sequential()
     model.add(Conv1D(filters=32, kernel_size=6, activation='relu', input_shape=(n_timesteps,n_features)))
     model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
-    model.add(Dropout(0.4)) #0.4
+    model.add(Dropout(0.3)) #0.4
     model.add(MaxPooling1D(pool_size=3))
     model.add(Conv1D(filters=64, kernel_size=3, activation='relu'))
     model.add(Flatten())
     model.add(Dense(128, activation='relu'))
-    model.add(Dropout(0.5))
+    model.add(Dropout(0.4))
     model.add(Dense(16, activation='relu')) ##     
     model.add(Dense(n_outputs, activation='softmax'))
     model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
@@ -400,6 +408,8 @@ def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
     # evaluate model
     _, accuracy = model.evaluate(X_test, y_test, batch_size=batch_size, verbose=0)
 
+    plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
+    
     if save_model:
         model.save("CNN_weathernet.h5")
         print("Saved model to disk")
@@ -407,7 +417,7 @@ def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
     return model, accuracy, history
         
 
-def plot_history(history, cl1, cl2, cl3, num1, num2, num3, save=False):
+def plot_history(history, save=False):
     plt.figure()
     plt.plot(history.history['accuracy'])
     plt.plot(history.history['val_accuracy'])
@@ -417,7 +427,7 @@ def plot_history(history, cl1, cl2, cl3, num1, num2, num3, save=False):
     plt.grid()
     plt.title('Model accuracy')
     if save:
-        plt.savefig('history_accuracies_cl1_%d_cl2_%d_cl3_%d_num1_%d_num2_%d_num3_%d.png' %(cl1, cl2, cl3, num1, num2, num3))
+        plt.savefig('history_accuracies_feb.png')
 
     plt.figure()
     plt.plot(history.history['loss'])
@@ -429,16 +439,17 @@ def plot_history(history, cl1, cl2, cl3, num1, num2, num3, save=False):
     plt.ylim((-0.1, 2))
     plt.legend(['Training data', 'Testing data'], loc='upper left')
     if save:
-        plt.savefig('history_loss_cl1_%d_cl2_%d_cl3_%d_num1_%d_num2_%d_num3_%d.png' %(cl1, cl2, cl3, num1, num2, num3))
-    #plt.show()
+        plt.savefig('history_loss_feb.png')
+    plt.show()
 
 
 def mean_accuracy(runs=10):
-    trainX, trainy, testX, testy, index_test, obsids_test = load_dataset()
+    #trainX, trainy, testX, testy, index_test, obsids_test = load_dataset()
+    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset_v2('good_test2/', 'bad_test_gen2/')
     accuracies = []
     for r in range(runs):
-        model, accuracy, _ = evaluate_CNN(trainX, trainy, testX, testy)
-        analyse_classification_results(model, testX, testy, index_test, obsids_test)
+        model, accuracy, _ = evaluate_CNN(X_train, y_train, X_test, y_test)
+        analyse_classification_results(model, X_test, y_test, indices_test, obsids_test)
 
         accuracy = accuracy * 100.0
         print('>#%d: %.3f' % (r+1, accuracy))
@@ -463,11 +474,17 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
     # evaluate model
     _, accuracy = model.evaluate(X_test, y_test, batch_size=64, verbose=0)
     print('Accuracy: ', accuracy)
-    
+
+    for i in range(20):
+        print(obsids_test[i])
+        print(index_test[i])
+        print(predictions[i])
+        print()
+
     if plot:
         for k in range(len(y_test)):
-            ymin = np.min(X_test[k]) -1
-            ymax = np.max(X_test[k]) +2
+            ymin = np.min(X_test[k]) -0.5
+            ymax = np.max(X_test[k]) +1
             subseq = int(index_test[k][1]/30000)
             if y_pred[k] == 0 and y_true[k] == 1:
                 print(obsids_test[k])
@@ -477,7 +494,7 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
                 plt.figure(figsize=(5,3))
                 plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
                 plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
-                plt.text(index_test[k][1]-1e4, 2, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
+                plt.text(index_test[k][1]-1e4, 1, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
                 plt.ylim(ymin,ymax)
                 plt.grid()
                 plt.tight_layout()
@@ -492,7 +509,7 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
                 plt.figure(figsize=(5,3))
                 plt.plot(range(index_test[k][0], index_test[k][1]), X_test[k])
                 plt.title('ObsID: %s, subsequence: %d' %(obsids_test[k], subseq))
-                plt.text(index_test[k][1]-1e4, 2, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
+                plt.text(index_test[k][1]-1e4, 1, 'Bad weather: %.2f \nGood weather: %.2f'  %(predictions[k][1], predictions[k][0]), bbox={'facecolor': 'lightblue', 'alpha': 0.7, 'pad': 10})
                 plt.ylim(ymin,ymax)
                 plt.grid()
                 plt.tight_layout()
@@ -531,7 +548,7 @@ def heatmap_convolving_layers():
     
 
 if __name__ == '__main__':
-    #X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = load_dataset()
+    #X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = load_dataset(random=True)
     #X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test = load_dataset_fromfile()
     #history, accuracy = evaluate_CNN_with_ps_v2(X_train, y_train, ps_train, X_test, y_test, ps_test)
     #history, accuracy = evaluate_CNN_with_ps(X_train, y_train, ps_train, X_test, y_test, ps_test)
@@ -539,11 +556,10 @@ if __name__ == '__main__':
     #model, accuracy, history = evaluate_NN(ps_train, y_train, ps_test, y_test, save_model=False)
     #print(accuracy)
 
-    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset_v2('good_samples/', 'bad_samples/')
+    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset_v2('good_test/', 'bad_test_gen_norm_fix/')
     #model = load_model('CNN_weathernet.h5')
-    model, history, accuracy = evaluate_CNN(X_train, y_train, X_test, y_test)
-    analyse_classification_results(model, X_test, y_test, indices_test, obsids_test, plot=True)
+    model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, save_model=True)
+    analyse_classification_results(model, X_test, y_test, indices_test, obsids_test, plot=False)
+    plot_history(history, save=True)
 
-    # Ser ut som at jeg kan ha vært litt upresis på klassifiseringen jeg har gjort by-eye. Ser ut som 
-    # noen samples med ca like mye struktur er labeled forskjellig. Burde ta hensyn til power scale. 
-    # Var også av ca 26 samples, 1 eller 2 spike-samples som ble klassifisert som vær. 
+    #mean_accuracy()

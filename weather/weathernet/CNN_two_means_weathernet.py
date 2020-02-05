@@ -27,6 +27,8 @@ from keras.layers.merge import concatenate
 from keras.models import load_model
 from keras.utils import plot_model
 
+from CNN_weathernet import create_dataset_v2
+
 def read_data(textfile):
     f = open(textfile, 'r')
     lines = f.readlines()
