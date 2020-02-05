@@ -27,148 +27,7 @@ from keras.layers.merge import concatenate
 from keras.models import load_model
 from keras.utils.vis_utils import plot_model
 
-
-def read_data(textfile, generate_more_data=False, n=10):
-    f = open(textfile, 'r')
-    lines = f.readlines()
-    data = []
-    power_spectrum = []
-    obsids = []
-    labels = []
-    index = []
-
-    for line in lines:
-        filename = line.split()[0]
-        index1 = int(line.split()[1])
-        index2 = int(line.split()[2])
-        label = int(line.split()[3])
-        month = filename[14:21]
-        obsid = int(filename[9:13])
-
-        labels.append(label)
-        obsids.append(obsid)
-        index.append((index1, index2))
-        path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/' + month + '/'
-        with h5py.File(path + filename, 'r') as hdf:
-            tod       = np.array(hdf['spectrometer/band_average'])
-            el        = np.array(hdf['spectrometer/pixel_pointing/pixel_el'][0])
-            az        = np.array(hdf['spectrometer/pixel_pointing/pixel_az'][0])
-            features  = np.array(hdf['spectrometer/features'])
-        
-        # Removing Tsys measurements
-        boolTsys = (features != 8192)
-        indexTsys = np.where(boolTsys==False)[0]
-
-        if len(indexTsys) > 0 and (np.max(indexTsys) - np.min(indexTsys)) > 5000:
-            boolTsys[:np.min(indexTsys)] = False
-            boolTsys[np.max(indexTsys):] = False
-
-        tod       = tod[:,:,boolTsys]
-        el        = el[boolTsys]
-        az        = az[boolTsys]
-
-        # Extracting subsequence
-        tod       = tod[:,:,index1:index2]
-        el        = el[index1:index2]
-        az        = az[index1:index2]
-
-        # Preprocessing
-        tod = preprocess_data(tod, el, az, obsids[-1], index[-1])
-
-        # Calculating power spectrum
-        ps = calculate_power_spectrum(tod)
-
-        # Normalizing
-        tod = normalize(tod)
-
-        data.append(tod)
-        power_spectrum.append(ps)
-    
-    return np.array(data), np.array(labels), np.array(power_spectrum), index,  obsids
-
-def remove_elevation_gain(X, g, a, c, d, e):
-    t, el, az = X
-    return  g/np.sin(el*np.pi/180) + az*a + c + d*t + e*t**2 
-
-
-def preprocess_data(data, el, az, obsid, index):
-    # Normalizing by dividing each feed on its own mean
-    for i in range(np.shape(data)[0]):
-        for j in range(np.shape(data)[1]):
-            data[i][j] = data[i][j]/np.nanmean(data[i][j])
-    
-    #print(np.shape(data))
-    # Mean over feeds and sidebands
-    data = np.nanmean(data, axis=0)
-    data = np.nanmean(data, axis=0)
-
-
-    part = int(len(el)/4)
-    
-    t = np.arange(len(el))
-    g = np.zeros(len(el))
-    a = np.zeros(len(el))
-    std = np.zeros(len(el))
-    diff = np.zeros(len(el))
-    
-    for i in range(4):
-        popt, pcov = curve_fit(remove_elevation_gain, (t[part*i:part*(i+1)],el[part*i:part*(i+1)], az[part*i:part*(i+1)]), data[part*i:part*(i+1)])
-        g[part*i:part*(i+1)] = popt[0]
-        a[part*i:part*(i+1)] = popt[1]
-        std[part*i:part*(i+1)] = np.std(data[part*i:part*(i+1)])
-        diff[part*i:part*(i+1)] = (data[part*i-1] - g[part*i-1]/np.sin(el[part*i-1]*np.pi/180) - a[part*i-1]*az[part*i-1]) - (data[part*i] - g[part*i]/np.sin(el[part*i]*np.pi/180) - a[part*i]*az[part*i]) + diff[part*(i-1)]
-
-
-    """
-    if np.max(abs(a/std)) > 0.28:
-        f1 = open('data/azimuth_effect.txt')
-        lines = f1.readlines()
-        new_line = '%s   %.4f   %d   %d\n' %(obsid, np.max(abs(a/std)), index[0], index[1])
-        with open('data/azimuth_effect.txt', 'a') as f:
-            if new_line not in lines:
-                f.write(new_line)
-    """
-
-    # Removing elevation gain 
-    data = data - g/np.sin(el*np.pi/180) - a*az + diff 
-
-    #data = data[::10]
-    return data
-
-def normalize(data):
-    data = (data - np.mean(data))/np.std(data)
-
-    return data
-
-
-def calculate_power_spectrum(data):
-    ps = np.abs(np.fft.fft(data))**2
-    freqs = np.fft.fftfreq(len(data))
-
-    logbins = np.logspace(-5, -0.2, 10)
-    ps_binned, bins = np.histogram(freqs, bins=logbins, weights=ps)
-    ps_binned_2, bins = np.histogram(freqs, bins=logbins)
-
-    #plt.plot(ps_binned/ps_binned_2)
-    #plt.show()
-
-    return ps_binned/ps_binned_2/1e6#1e18
-
-def load_dataset_fromfile():
-    with h5py.File('dataset.h5', 'r') as hdf:
-            X_train = np.array(hdf['X_train'])
-            y_train = np.array(hdf['y_train'])
-            ps_train  = np.array(hdf['ps_train'])
-            X_test  = np.array(hdf['X_test'])
-            y_test  = np.array(hdf['y_test'])
-            ps_test  = np.array(hdf['ps_test'])
-            index_test  = np.array(hdf['index_test'])
-            obsids_test  = np.array(hdf['obsids_test'])
-
-
-    return X_train, y_train, ps_train, X_test, y_test, ps_test,  index_test, obsids_test
-
-def create_dataset_v2(path_good, path_bad, n=False):
+def create_dataset(path_good, path_bad, n=False):
     random.seed(24)
     
     files_good = glob.glob(path_good + '*.hd5')
@@ -179,11 +38,10 @@ def create_dataset_v2(path_good, path_bad, n=False):
     random.shuffle(files_good)
     random.shuffle(files_bad)
 
-    n_test_samples = int(0.125*(len(files_good) + len(files_bad)))
     # Do not want to use more than 25 % of the bad data as testing data
+    n_test_samples = int(0.125*(len(files_good) + len(files_bad)))
     if n_test_samples > 0.25*len(files_bad):
         n_test_samples = int(0.25*len(files_bad))
-
 
     testing_data = files_good[:n_test_samples] + files_bad[:n_test_samples]
     testing_labels = labels_good[:n_test_samples] + labels_bad[:n_test_samples]
@@ -244,42 +102,6 @@ def read_files(files):
             indices.append(index)
 
     return np.array(data), np.array(power_spectra), indices, obsids
-
-
-def load_dataset(random=False):
-    if random:
-        split_train_test('training_data_random.txt', 'testing_data_random.txt')
-        X_train, y_train, ps_train, index_train, obsids_train = read_data('data/training_data_random.txt')
-        X_test, y_test, ps_test, index_test, obsids_test = read_data('data/testing_data_random.txt')    
-                   
-    else:
-        X_train, y_train, ps_train, index_train, obsids_train = read_data('data/training_set_more_good.txt')
-        X_test, y_test, ps_test, index_test, obsids_test = read_data('data/testing_set_more_good.txt')
-
-    print('Training samples:', len(y_train))
-    print('Testing samples:', len(y_test))
-    print('Of the testing samples, %d is bad weather.' %np.sum(y_test))
-    print('Of the training samples, %d is bad weather.' %np.sum(y_train))
-
-    X_train = X_train.reshape(len(y_train), np.shape(X_train)[1],1)
-    X_test = X_test.reshape(len(y_test), np.shape(X_test)[1],1)
-
-    # Convert label array to one-hot encoding
-    y_train = to_categorical(y_train, 2)
-    y_test = to_categorical(y_test, 2)
-
-    with h5py.File('dataset.h5', 'w') as hdf:
-        hdf.create_dataset('X_train', data=X_train)
-        hdf.create_dataset('y_train', data=y_train)
-        hdf.create_dataset('X_test', data=X_test)
-        hdf.create_dataset('y_test', data=y_test)
-        hdf.create_dataset('ps_train', data=ps_train)
-        hdf.create_dataset('ps_test', data=ps_test)
-        hdf.create_dataset('index_test', data=index_test)
-        hdf.create_dataset('obsids_test', data=obsids_test)
-
-
-    return X_train, y_train, ps_train, X_test, y_test, ps_test, index_test, obsids_test
 
 
 def evaluate_CNN_with_ps(X_train, y_train, ps_train, X_test, y_test, ps_test):
