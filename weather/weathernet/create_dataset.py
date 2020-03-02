@@ -118,8 +118,6 @@ def preprocess_data(data, el, az, obsid):
     data = np.nanmean(data, axis=0)
     data = np.nanmean(data, axis=0)
 
-    #plt.figure(figsize=(4,3))
-    #plt.plot(data)
 
     part = int(len(el)/4)
 
