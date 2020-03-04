@@ -11,7 +11,6 @@ import scipy.interpolate
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from scipy.optimize import curve_fit
-from split_train_test import split_train_test
 
 from keras.models import Sequential
 from keras.layers import Dense
@@ -230,7 +229,7 @@ def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
     # evaluate model
     _, accuracy = model.evaluate(X_test, y_test, batch_size=batch_size, verbose=0)
 
-    plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
+    #plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
     
     if save_model:
         model.save("CNN_weathernet.h5")
@@ -266,13 +265,11 @@ def plot_history(history, save=False):
 
 
 def mean_accuracy(runs=10):
-    #trainX, trainy, testX, testy, index_test, obsids_test = load_dataset()
-    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset_v2('good_test2/', 'bad_test_gen2/')
+    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset('good_samples/', 'bad_samples/')
+
     accuracies = []
     for r in range(runs):
         model, accuracy, _ = evaluate_CNN(X_train, y_train, X_test, y_test)
-        analyse_classification_results(model, X_test, y_test, indices_test, obsids_test)
-
         accuracy = accuracy * 100.0
         print('>#%d: %.3f' % (r+1, accuracy))
         accuracies.append(accuracy)
@@ -370,5 +367,6 @@ def heatmap_convolving_layers():
     
 
 if __name__ == '__main__':
-    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset('good_samples/', 'bad_samples/')
-    model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False)
+    #X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset('good_samples/', 'bad_samples/')
+    #model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False)
+    mean_accuracy()

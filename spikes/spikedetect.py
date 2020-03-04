@@ -21,7 +21,7 @@ f = open('spikes.txt', 'r')
 lines = f.readlines()
 filename = lines[9].split()[0] #9
 #filename = 'comap-0006944-2019-07-17-174905.hd5'
-filename = 'comap-0010565-2020-01-17-222642.hd5'
+filename = 'comap-0007613-2019-09-10-183037.hd5'
 month = filename[14:21]
 obsid = int(filename[9:13])
 print(obsid)
@@ -47,7 +47,7 @@ with h5py.File(path + filename, 'r') as hdf:
     az        = az[boolTsys]
 
 
-    tod = tod[3,3]
+    tod = tod[14,3]
     
     num_parts = 24
     part = int(len(el)/num_parts)
@@ -108,27 +108,36 @@ fc = 0.001
 b = 0.1
 
 tod = highpass_filter(tod, fc=fc, b=b)
-#tod = scipy.signal.savgol_filter(tod, 11, 3)
-
 
 x = np.linspace(-50, 50, 100)
-cfs = [gaussian(x, mu=0, sigma=0.1), gaussian(x, mu=0, sigma=0.5),gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
+cfs = [gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
 
+
+
+for cf in cfs:
+    cs = scipy.signal.convolve(tod, cf, mode='same')
+    
+
+
+
+
+"""
+x = np.linspace(-50, 50, 100)
+cfs = [gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
 
 
 for i in range(len(cfs)):
     cfs[i] = cfs[i]/np.max(cfs[i])
 
 for i in range(len(cfs)):
-    plt.plot(cfs[i], label='%d' %(i+1))
+    plt.plot(cfs[i], label='%d' %(i+2))
 plt.legend()
 plt.show()
 
 
-
-peaks = scipy.signal.find_peaks(tod, prominence=np.max(tod[10000:75000])*2.5)
+peaks = scipy.signal.find_peaks(tod, prominence=np.max(tod[0:60000])*2.5)
 peak_heights = tod[peaks[0]]
-noise_std = np.std(tod[10000:75000])
+noise_std = np.std(tod[0:60000])
 sn = peak_heights/noise_std
 
 print(sn)
@@ -141,7 +150,7 @@ plt.plot(x_tod[peaks[0]], tod[peaks[0]], 'o')
 plt.show()
 
 factors = [1,4500,9000,2750]
-i=0
+i=2
 for cf in cfs:
     #plt.plot(cf)
     #plt.show()
@@ -149,7 +158,7 @@ for cf in cfs:
     cs = scipy.signal.convolve(tod, cf, mode='same')
     #peaks = scipy.signal.find_peaks(cs, prominence=np.max(cs[65000:90000])*2)
     peak_heights = cs[peaks[0]]
-    std_noise = np.std(cs[10000:75000])
+    std_noise = np.std(cs[0:60000])
     sn = peak_heights/std_noise
    
     #plt.plot(cs)
@@ -158,32 +167,40 @@ for cf in cfs:
     #print('   %.2f          %.2f          %.2f         %.2f         %.2f' %(sn[0], sn[1], sn[2], sn[3], sn[4]))
     print(i, sn)
     i+=1
+"""
+
 
 
 
 
 
 """
+
+
+fcs = [0.001, 0.0005, 0.0001]
+bs = [0.1, 0.5]
+
+
 for fc in fcs:
     for b in bs:
-        tod = highpass_filter(tod, fc=fc, b=b)
-        peaks = scipy.signal.find_peaks(tod,  prominence=np.max(tod[65000:90000])*1.8)
+        tod_new = highpass_filter(tod, fc=fc, b=b)
+        peaks = scipy.signal.find_peaks(tod_new,  prominence=np.max(tod_new[25000:50000])*2.2)
 
-        x = np.linspace(0, len(tod), len(tod))
-        peak_heights = tod[peaks[0]]
+        x = np.linspace(0, len(tod_new), len(tod_new))
+        peak_heights = tod_new[peaks[0]]
         
         #print(peak_heights)
         if len(peak_heights) > 15:
             peak_heights = [0]
-        noise_std = np.std(tod[65000:90000])
+        noise_std = np.std(tod_new[25000:50000])
         sns = peak_heights/noise_std
         
         for sn in sns:
             print('fc = %.3f       b = %.3f        S/N = %.3f' %(fc, b, sn))
         print()
         
-        plt.plot(x, tod)
-        plt.plot(x[peaks[0]], tod[peaks[0]], 'o')
+        plt.plot(x, tod_new)
+        plt.plot(x[peaks[0]], tod_new[peaks[0]], 'o')
         plt.show()
 
 
