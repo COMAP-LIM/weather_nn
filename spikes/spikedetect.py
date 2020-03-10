@@ -5,7 +5,7 @@ import scipy.signal
 import sys
 from scipy.optimize import curve_fit
 import scipy.stats
-
+import matplotlib.transforms as mtransforms
 
 class SpikeDetect:
     def __init__(self, data):
@@ -19,9 +19,14 @@ def remove_elevation_gain(X, g, a, c, d, e):
 
 f = open('spikes.txt', 'r')
 lines = f.readlines()
-filename = lines[9].split()[0] #9
-#filename = 'comap-0006944-2019-07-17-174905.hd5'
-filename = 'comap-0007613-2019-09-10-183037.hd5'
+filename = lines[3].split()[0] #9
+filename = 'comap-0006944-2019-07-17-174905.hd5'
+#filename = 'comap-0007613-2019-09-10-183037.hd5'
+#filename = 'comap-0011507-2020-02-21-174416.hd5'
+#filename = 'comap-0011510-2020-02-21-200733.hd5'
+#filename = 'comap-0011419-2020-02-12-182147.hd5'
+
+
 month = filename[14:21]
 obsid = int(filename[9:13])
 print(obsid)
@@ -46,9 +51,10 @@ with h5py.File(path + filename, 'r') as hdf:
     el        = el[boolTsys]
     az        = az[boolTsys]
 
-
-    tod = tod[14,3]
+    tod = tod[0,0]
     
+    #plt.plot(tod)
+
     num_parts = 24
     part = int(len(el)/num_parts)
 
@@ -56,15 +62,26 @@ with h5py.File(path + filename, 'r') as hdf:
     diff = np.zeros(len(el))
     temp = np.zeros(len(el))
     for i in range(num_parts):
-        popt, pcov = curve_fit(remove_elevation_gain, (t[part*i:part*(i+1)],el[part\
-*i:part*(i+1)], az[part*i:part*(i+1)]), tod[part*i:part*(i+1)])
-        g = popt[0]
-        a = popt[1]
+        if i == num_parts-1:
+            popt, pcov = curve_fit(remove_elevation_gain, (t[part*i:],el[part\
+*i:], az[part*i:]), tod[part*i:])
+            g = popt[0]
+            a = popt[1]
 
-        temp[part*i:part*(i+1)] = g/np.sin(el[part*i:part*(i+1)]*np.pi/180) + a*az[\
-part*i:part*(i+1)]
-        diff[part*i:part*(i+1)] = (tod[part*i-1] - temp[part*i-1]) - (tod[part*i]\
- - temp[part*i]) + diff[part*(i-1)]
+            temp[part*i:] = g/np.sin(el[part*i:]*np.pi/180) + a*az[part*i:]
+            diff[part*i:] = (tod[part*i-1] - temp[part*i-1]) - (tod[part*i]\
+                                        - temp[part*i]) + diff[part*(i-1)]
+            
+        else:
+            popt, pcov = curve_fit(remove_elevation_gain, (t[part*i:part*(i+1)],el[part\
+                        *i:part*(i+1)], az[part*i:part*(i+1)]), tod[part*i:part*(i+1)])
+            g = popt[0]
+            a = popt[1]
+
+            temp[part*i:part*(i+1)] = g/np.sin(el[part*i:part*(i+1)]*np.pi/180) + a*az[\
+                                                                part*i:part*(i+1)]
+            diff[part*i:part*(i+1)] = (tod[part*i-1] - temp[part*i-1]) - (tod[part*i]\
+                                                - temp[part*i]) + diff[part*(i-1)]
 
     # Removing elevation gain                                                       
     tod = tod - temp + diff 
@@ -96,9 +113,45 @@ def highpass_filter(data, fc=0.1, b=0.08):
     h[(N-1) // 2] += 1
 
     # Apply high-pass filter by convolving over the signal
-    data = np.convolve(data, h)
+    data = np.convolve(data, h, mode='same')
 
     return data 
+
+
+def peakdetect(y, lag=5, threshold=10, influence=0):
+    signal = np.zeros(len(y))
+    y_filtered = np.copy(y)
+    average = np.zeros(len(y))
+    std = np.zeros(len(y))
+    average[lag-1] = np.mean(y[:lag])
+    std[lag-1] = np.std(y[:lag])
+
+    for i in range(lag, len(y)):
+        if np.abs(y[i] - average[i-1]) > threshold*std[i-1]:
+                if y[i] > average[i-1]:
+                    signal[i] = 1
+                else:
+                    signal[i] = -1
+                y_filtered[i] = influence*y[i] + (1-influence)*y_filtered[i-1]
+        else:
+            signal[i] = 0
+            y_filtered[i] = y[i]
+
+        average[i] = np.mean(y_filtered[i-lag+1:i+1])
+        std[i] = np.std(y_filtered[i-lag+1:i+1])
+
+    peak_indices = np.nonzero(signal)[0]
+    cut = []
+    for i in range(1, len(peak_indices)):
+        if (peak_indices[i] - peak_indices[i-1] > 1):
+            cut.append(i)
+
+    peak_indices = np.split(peak_indices, cut)
+    peak_tops = []
+    for i in range(len(peak_indices)):
+        peak_tops.append(peak_indices[i][np.argmax(y[peak_indices[i]])])
+
+    return peak_tops, signal
 
 
 def gaussian(x, mu, sigma):
@@ -107,20 +160,38 @@ def gaussian(x, mu, sigma):
 fc = 0.001
 b = 0.1
 
-tod = highpass_filter(tod, fc=fc, b=b)
+#plt.figure()
+#plt.plot(tod)
 
+
+tod_new = highpass_filter(tod, fc=fc, b=b)
+peak_tops, signal = peakdetect(tod_new, lag=100, threshold=6, influence=0)
+
+
+plt.plot(tod_new)
+plt.plot(np.arange(len(tod_new))[peak_tops], tod_new[peak_tops], 'ro')
+plt.show()
+
+"""
 x = np.linspace(-50, 50, 100)
-cfs = [gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
+cfs = [[1], gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
 
 
-
-for cf in cfs:
-    cs = scipy.signal.convolve(tod, cf, mode='same')
+fig, ax = plt.subplots()
+for i in range(len(cfs)):
+    cs = scipy.signal.convolve(tod_new, cfs[i], mode='same')
+    peaks = peakdetect(cs, lag=100, threshold=6, influence=0)
     
+    peaks_bolean = (abs(peaks) > 0)
+    x = np.linspace(0, len(cs), len(cs))
 
+    ax = plt.subplot(2, 4, i+1)
+    plt.plot(cs)
+    trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
+    plt.fill_between(x, 0, 1, where=peaks_bolean, alpha=0.5, color='red', transform=trans)
+plt.show()
 
-
-
+"""
 """
 x = np.linspace(-50, 50, 100)
 cfs = [gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
