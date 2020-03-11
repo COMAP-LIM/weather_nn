@@ -6,6 +6,7 @@ import sys
 from scipy.optimize import curve_fit
 import scipy.stats
 import matplotlib.transforms as mtransforms
+import time
 
 class SpikeDetect:
     def __init__(self, data):
@@ -17,27 +18,18 @@ def remove_elevation_gain(X, g, a, c, d, e):
     return  g/np.sin(el*np.pi/180) + az*a + c + d*t + e*t**2
 
 
-f = open('spikes.txt', 'r')
-lines = f.readlines()
-filename = lines[3].split()[0] #9
-filename = 'comap-0006944-2019-07-17-174905.hd5'
-#filename = 'comap-0007613-2019-09-10-183037.hd5'
-#filename = 'comap-0011507-2020-02-21-174416.hd5'
-#filename = 'comap-0011510-2020-02-21-200733.hd5'
-#filename = 'comap-0011419-2020-02-12-182147.hd5'
+def read_file(filename, feed, sb):
+    month = filename[14:21]
+    obsid = int(filename[9:13])
+    print(obsid)
 
+    path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/' + month + '/'
 
-month = filename[14:21]
-obsid = int(filename[9:13])
-print(obsid)
-
-path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/' + month + '/'
-
-with h5py.File(path + filename, 'r') as hdf:
-    tod       = np.array(hdf['spectrometer/band_average'])
-    el        = np.array(hdf['spectrometer/pixel_pointing/pixel_el'][0])
-    az        = np.array(hdf['spectrometer/pixel_pointing/pixel_az'][0])
-    features  = np.array(hdf['spectrometer/features'])
+    with h5py.File(path + filename, 'r') as hdf:
+        tod       = np.array(hdf['spectrometer/band_average'])
+        el        = np.array(hdf['spectrometer/pixel_pointing/pixel_el'][0])
+        az        = np.array(hdf['spectrometer/pixel_pointing/pixel_az'][0])
+        features  = np.array(hdf['spectrometer/features'])
 
     # Removing Tsys measurements     
     boolTsys = (features != 8192)
@@ -51,9 +43,13 @@ with h5py.File(path + filename, 'r') as hdf:
     el        = el[boolTsys]
     az        = az[boolTsys]
 
-    tod = tod[0,0]
-    
+    tod = tod[feed,sb]
+    where_are_NaNs = np.isnan(tod)
+    tod[where_are_NaNs] = 0
+
+    plt.figure(figsize=(5,4))
     #plt.plot(tod)
+    
 
     num_parts = 24
     part = int(len(el)/num_parts)
@@ -86,7 +82,9 @@ with h5py.File(path + filename, 'r') as hdf:
     # Removing elevation gain                                                       
     tod = tod - temp + diff 
     tod = tod - np.mean(tod)
-
+    
+    return tod 
+    
 
 def highpass_filter(data, fc=0.1, b=0.08):
     """
@@ -148,8 +146,9 @@ def peakdetect(y, lag=5, threshold=10, influence=0):
 
     peak_indices = np.split(peak_indices, cut)
     peak_tops = []
-    for i in range(len(peak_indices)):
-        peak_tops.append(peak_indices[i][np.argmax(y[peak_indices[i]])])
+    if len(peak_indices[0])>0:
+        for i in range(len(peak_indices)):
+            peak_tops.append(peak_indices[i][np.argmax(abs(y[peak_indices[i]]))])
 
     return peak_tops, signal
 
@@ -157,41 +156,74 @@ def peakdetect(y, lag=5, threshold=10, influence=0):
 def gaussian(x, mu, sigma):
     return 1/(sigma*np.sqrt(2*np.pi)) * np.exp(-1/2 * ((x-mu)/sigma)**2)
 
+
+
+
+#f = open('spikes.txt', 'r')
+#lines = f.readlines()
+#filename = lines[4].split()[0] #9
+#filename = 'comap-0006944-2019-07-17-174905.hd5'
+#filename = 'comap-0007613-2019-09-10-183037.hd5'
+#filename = 'comap-0011507-2020-02-21-174416.hd5'
+filename = 'comap-0011510-2020-02-21-200733.hd5'
+#filename = 'comap-0011419-2020-02-12-182147.hd5'
+#filename = 'comap-0008229-2019-10-09-050335.hd5' # broad spike
+#filename = 'comap-0008312-2019-10-13-011517.hd5' # broad spike
+#filename = 'comap-0011480-2020-02-19-004954.hd5' # weather
+#filename = 'comap-0010676-2020-01-22-023457.hd5' # weather
+#filename = 'comap-0006541-2019-06-16-232518.hd5' # spike storm
+
+tod = read_file(filename, 10, 2)
+
 fc = 0.001
-b = 0.1
+b = 0.001   # If bad weather: 0.1
 
 #plt.figure()
 #plt.plot(tod)
 
 
 tod_new = highpass_filter(tod, fc=fc, b=b)
-peak_tops, signal = peakdetect(tod_new, lag=100, threshold=6, influence=0)
+#peak_tops, signal = peakdetect(tod_new, lag=100, threshold=6, influence=0)
+peak_tops_default, signal = peakdetect(tod_new, lag=200, threshold=5, influence=0.3)
 
+print(peak_tops_default)
 
 plt.plot(tod_new)
-plt.plot(np.arange(len(tod_new))[peak_tops], tod_new[peak_tops], 'ro')
+plt.plot(np.arange(len(tod_new))[peak_tops_default], tod_new[peak_tops_default], 'ro')
 plt.show()
 
-"""
+
 x = np.linspace(-50, 50, 100)
-cfs = [[1], gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
+cfs = [[1], gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,1,3,2,0])]
 
 
 fig, ax = plt.subplots()
 for i in range(len(cfs)):
     cs = scipy.signal.convolve(tod_new, cfs[i], mode='same')
-    peaks = peakdetect(cs, lag=100, threshold=6, influence=0)
-    
-    peaks_bolean = (abs(peaks) > 0)
-    x = np.linspace(0, len(cs), len(cs))
+
+    start_time = time.time()
+    peak_tops, signal = peakdetect(cs, lag=200, threshold=5, influence=0.3)
+    #print("--- %s seconds ---" % (time.time() - start_time))
+
+    std = np.std(cs[1:] - cs[:-1])/np.sqrt(2)
+
+    print('----- %d ------' %i)
+    for j in range(len(peak_tops_default)):
+        print('%d:    %.2f' %(peak_tops_default[j], cs[peak_tops_default[j]]/std))
+    print()
+        
+    signal_bolean = (abs(signal) > 0)
+    x = np.arange(len(cs))
 
     ax = plt.subplot(2, 4, i+1)
     plt.plot(cs)
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
-    plt.fill_between(x, 0, 1, where=peaks_bolean, alpha=0.5, color='red', transform=trans)
+    plt.fill_between(x, 0, 1, where=signal_bolean, alpha=0.5, color='red', transform=trans)
+    plt.plot(x[peak_tops], cs[peak_tops], 'ro', markersize=2)
 plt.show()
 
-"""
+
+
 """
 x = np.linspace(-50, 50, 100)
 cfs = [gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
