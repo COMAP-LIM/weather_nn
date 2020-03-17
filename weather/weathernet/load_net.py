@@ -92,17 +92,22 @@ def subsequencegen(filename):
 
     return np.array(sequences), MJD_start
 
+#already_checked = np.loadtxt('weather_list_obsid.txt', usecols=(0))
+#print(already_checked)
+
+folders = glob.glob('/mn/stornext/d16/cmbco/comap/pathfinder/ovro/20*/')
+
+for el in folders:
+    if len(el) > 53:
+        folders.remove(el)
 
 
 # load model
-model = load_model('CNN_weathernet_new.h5')
-
-folders = ['2019-01', '2019-02', '2019-03', '2019-04', '2019-05', '2019-06', '2019-07',\
-           '2019-08', '2019-09', '2019-10', '2019-11', '2019-12', '2020-01', '2020-02']
+model = load_model('weathernet_current.h5')
 
 files = []
 for el in folders:
-    files.extend(glob.glob( '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/%s/*.hd5' %el))
+    files.extend(glob.glob('%s/*.hd5' %el))
 
 files.sort()
 
@@ -116,15 +121,15 @@ for f in files:
     sequences, MJD_start = subsequencegen(f)
     if sequences is None:
         continue 
-    std = 0.08377675899274586
+
+    std = np.loadtxt('weathernet_current_std.txt') 
     sequences = sequences/std
     predictions = model.predict(sequences.reshape(np.shape(sequences)[0], np.shape(sequences)[1], 1)) 
 
-    """
-    for i in range(len(predictions)):
-        print('Subseq %d    Good: %.4f    Bad: %.4f' %(i+1, predictions[i][0], predictions[i][1]))
-    """
-   
+    
+    #for i in range(len(predictions)):
+    #    print('Subseq %d    Good: %.4f    Bad: %.4f' %(i+1, predictions[i][0], predictions[i][1]))
+       
     file_subseq = open('weather_list.txt', 'a')
     for i in range(len(predictions)):
         file_subseq.write('%d    %d    %.4f   %f\n' %(int(obsid), i+1, predictions[i][1], MJD_start))
@@ -133,3 +138,4 @@ for f in files:
     file_obsid.write('%d    %.4f    %.4f   %f \n' %(int(obsid), max(predictions[:,1]), np.median(predictions[:,1]), MJD_start))
 
 print("--- %s seconds ---" % (time.time() - start_time))
+

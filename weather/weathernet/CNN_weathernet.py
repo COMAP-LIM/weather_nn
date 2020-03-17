@@ -79,7 +79,7 @@ def create_dataset(path_good, path_bad, n=False):
     y_train = to_categorical(training_labels, 2)
     y_test = to_categorical(testing_labels, 2)
 
-    return X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test
+    return X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std
 
 
 def read_files(files):
@@ -205,7 +205,7 @@ def evaluate_NN(ps_train, y_train, ps_test, y_test, save_model=False):
     return model, accuracy, history
     
 
-def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
+def evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=False):
     verbose, epochs, batch_size = 1, 60, 128 #64
     n_timesteps, n_features, n_outputs = X_train.shape[1], X_train.shape[2], y_train.shape[1]
     adam = optimizers.Adam(lr=5e-5)
@@ -233,6 +233,8 @@ def evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False):
     
     if save_model:
         model.save("CNN_weathernet.h5")
+        with open('CNN_weathernet_std.txt', 'w') as f:
+            f.write(str(std))
         print("Saved model to disk")
 
     return model, accuracy, history
@@ -367,6 +369,6 @@ def heatmap_convolving_layers():
     
 
 if __name__ == '__main__':
-    #X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test = create_dataset('good_samples/', 'bad_samples/')
-    #model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, save_model=False)
-    mean_accuracy()
+    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = create_dataset('good_samples/', 'bad_samples/')
+    model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=True)
+    #mean_accuracy()
