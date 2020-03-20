@@ -8,6 +8,7 @@ import scipy.stats
 import matplotlib.transforms as mtransforms
 import time
 
+
 class SpikeDetect:
     def __init__(self, data):
         self.data = data
@@ -32,7 +33,7 @@ def read_file(filename, feed, sb):
         features  = np.array(hdf['spectrometer/features'])
 
     # Removing Tsys measurements     
-    boolTsys = (features != 8192)
+    boolTsys = (features & 1 << 13 != 8192)
     indexTsys = np.where(boolTsys==False)[0]
 
     if len(indexTsys) > 0 and (np.max(indexTsys) - np.min(indexTsys)) > 5000:
@@ -47,10 +48,9 @@ def read_file(filename, feed, sb):
     where_are_NaNs = np.isnan(tod)
     tod[where_are_NaNs] = 0
 
-    plt.figure(figsize=(5,4))
+    #plt.figure(figsize=(5,4))
     #plt.plot(tod)
     
-
     num_parts = 24
     part = int(len(el)/num_parts)
 
@@ -116,24 +116,31 @@ def highpass_filter(data, fc=0.1, b=0.08):
     return data 
 
 
-def peakdetect(y, lag=5, threshold=10, influence=0):
+def g(X, b, d, c):#, e, f, g, c):
+    x, a = X
+    #return (a-d-e*x-f*x**2-g*x**3)*np.exp(-(x-b)**2/(2*c**2)) + d + e*x + f*x**2 + g*x**3 
+    return (a-d)*np.exp(-(x-b)**2/(2*c**2)) + d 
+
+
+def peak_detect(y, y_highpass, lag=5, threshold=10, influence=0, lim=3):
     signal = np.zeros(len(y))
-    y_filtered = np.copy(y)
+    y_filtered = np.copy(y_highpass)
     average = np.zeros(len(y))
     std = np.zeros(len(y))
     average[lag-1] = np.mean(y[:lag])
     std[lag-1] = np.std(y[:lag])
 
     for i in range(lag, len(y)):
-        if np.abs(y[i] - average[i-1]) > threshold*std[i-1]:
-                if y[i] > average[i-1]:
+        if (y_highpass[i] - average[i-1]) > threshold*std[i-1]: # Detects only positive spikes
+        #if np.abs(y[i] - average[i-1]) > threshold*std[i-1]:
+                if y_highpass[i] > average[i-1]:
                     signal[i] = 1
                 else:
                     signal[i] = -1
-                y_filtered[i] = influence*y[i] + (1-influence)*y_filtered[i-1]
+                y_filtered[i] = influence*y_highpass[i] + (1-influence)*y_filtered[i-1]
         else:
             signal[i] = 0
-            y_filtered[i] = y[i]
+            y_filtered[i] = y_highpass[i]
 
         average[i] = np.mean(y_filtered[i-lag+1:i+1])
         std[i] = np.std(y_filtered[i-lag+1:i+1])
@@ -146,219 +153,299 @@ def peakdetect(y, lag=5, threshold=10, influence=0):
 
     peak_indices = np.split(peak_indices, cut)
     peak_tops = []
+            
     if len(peak_indices[0])>0:
         for i in range(len(peak_indices)):
-            peak_tops.append(peak_indices[i][np.argmax(abs(y[peak_indices[i]]))])
-
-    return peak_tops, signal
-
-
-def gaussian(x, mu, sigma):
-    return 1/(sigma*np.sqrt(2*np.pi)) * np.exp(-1/2 * ((x-mu)/sigma)**2)
+            #peak_tops.append(peak_indices[i][0] + int(len(peak_indices[i])/2))
+            peak_tops.append(peak_indices[i][np.argmax(abs(y_highpass[peak_indices[i]]))])
 
 
+    peak_widths = []
+    fitted_peak_tops = []
+    for j in range(len(peak_tops)):
+        subseq = y[peak_tops[j]-100 : peak_tops[j]+100]
+        #subseq = subseq-np.mean(y)
+        x = np.arange(len(subseq))
+        
+        #tod_subseq = tod[peak_tops[j]-100 : peak_tops[j]+100]
+        #tod_subseq = tod_subseq - np.mean(tod_subseq)
+        
+        try:
+            popt, pcov = curve_fit(g, (x, np.ones(len(subseq))*subseq[100]), subseq, bounds=((100-lim,-1e4, 0),(100+lim,1e4, 200)))
+            #popt2, pcov2 = curve_fit(g, (x, np.ones(len(tod_subseq))*tod_subseq[100]), tod_subseq, bounds=((100-lim, -1e4, -1e4,-1e4, -1e4, 0),(100+lim,1e4,1e4,1e4,1e4,200)))
+                
+            fitted = g((x, subseq[100]), *popt)
+            #fitted2 = g((x, tod_subseq[100]), *popt2)
+            half_width = popt[-1]*3 # 3 standard deviations from the peak top in each direction
+            fitted_peak_tops.append(peak_tops[j]-100+popt[0])
+        
+        except:
+            print(peak_tops[j])
+            half_width = 0
+            fitted_peak_tops.append(peak_tops[j])
+
+        #plt.figure()
+        #plt.plot(tod_subseq)
+        #plt.figure()
+        #plt.plot(subseq)
+        #plt.plot(fitted)
+        #plt.plot(fitted2, '--', label='Normal')
+        #plt.show()
+            
+        peak_widths.append(half_width)
+      
+    return np.sort(peak_tops), peak_widths, np.sort(fitted_peak_tops), signal
 
 
-#f = open('spikes.txt', 'r')
-#lines = f.readlines()
+def peak_replace(data, peak_tops, peak_widths):
+    new_data = np.copy(data)
+    x1_list = [0]
+    x2_list = [0]
+    for j in range(len(peak_tops)):
+        peak_width = np.ceil(peak_widths[j])
+        x1 = int(peak_tops[j] - peak_width)
+        x2 = int(peak_tops[j] + peak_width)
+
+        if x1 < x2_list[-1]:
+            x2_list[-1] = x2
+        else:
+            x1_list.append(x1)
+            x2_list.append(x2)
+            
+    for j in range(1,len(x1_list)):
+        x1 = x1_list[j]
+        x2 = x2_list[j]
+        
+        
+        if x2 >= len(data):
+            x2 = len(data)-1
+        
+        if abs(x2 - x1) > 200:
+            continue
+        
+        else:
+            y1 = data[x1]
+            y2 = data[x2]
+        
+            m = (y2-y1)/(x2-x1)
+            b = (x2*y1 - x1*y2)/(x2-x1)
+            
+            x = np.arange(x1,x2+1)
+            y = m*x + b
+
+            std = np.std(data[1:]-data[:-1])/np.sqrt(2)
+            noise = np.random.normal(y, std)
+            noise[0] = y1
+            noise[-1] = y2
+
+            #plt.plot(x, noise, 'r', alpha=0.7)
+            new_data[x1:x2+1] = noise
+    
+    return new_data
+
+f = open('spikes.txt', 'r')
+lines = f.readlines()
 #filename = lines[4].split()[0] #9
 #filename = 'comap-0006944-2019-07-17-174905.hd5'
 #filename = 'comap-0007613-2019-09-10-183037.hd5'
-#filename = 'comap-0011507-2020-02-21-174416.hd5'
-filename = 'comap-0011510-2020-02-21-200733.hd5'
+#filename = 'comap-0011507-2020-02-21-174416.hd5' # weather 
+#filename = 'comap-0011510-2020-02-21-200733.hd5'
 #filename = 'comap-0011419-2020-02-12-182147.hd5'
 #filename = 'comap-0008229-2019-10-09-050335.hd5' # broad spike
 #filename = 'comap-0008312-2019-10-13-011517.hd5' # broad spike
 #filename = 'comap-0011480-2020-02-19-004954.hd5' # weather
 #filename = 'comap-0010676-2020-01-22-023457.hd5' # weather
 #filename = 'comap-0006541-2019-06-16-232518.hd5' # spike storm
+#filename = 'comap-0006653-2019-06-27-000128.hd5' # spike storm 
+#filename = 'comap-0006800-2019-07-08-232544.hd5' # spike storm 
+filename = 'comap-0006801-2019-07-09-005158.hd5' # spike strom
 
 tod = read_file(filename, 10, 2)
 
+
+"""
+from keras.models import load_model
+from create_dataset_copy import preprocess_data
+
+fs = 50
+T = 1/fs
+subseq_length = int(10*60/T)
+
+model = load_model('../weather/weathernet/weathernet_current.h5')
+std = np.loadtxt('../weather/weathernet/weathernet_current_std.txt')
+
+# Make subsequences                                                                                     
+sequences = []
+subseq_numb = 0
+while len(tod) > subseq_length*(subseq_numb+1):
+    subseq_numb += 1
+    subseq = tod[subseq_length*(subseq_numb-1):subseq_length*subseq_numb]
+    sequences.append(subseq)
+
+sequences = sequences/std
+predictions = model.predict(sequences.reshape(np.shape(sequences)[0], np.shape(sequences)[1], 1))
+
+print('Before spike removal: %.4f %.4f ' %(max(predictions[:,1]), np.median(predictions[:,1])))
+"""
+
 fc = 0.001
-b = 0.001   # If bad weather: 0.1
-
-#plt.figure()
-#plt.plot(tod)
-
+b = 0.01#0.1#0.001   # If bad weather: 0.1
 
 tod_new = highpass_filter(tod, fc=fc, b=b)
-#peak_tops, signal = peakdetect(tod_new, lag=100, threshold=6, influence=0)
-peak_tops_default, signal = peakdetect(tod_new, lag=200, threshold=5, influence=0.3)
 
-print(peak_tops_default)
+peak_tops, peak_widths, fitted_peak_tops, signal = peak_detect(tod, tod_new, lag=300, threshold=5, influence=0)
 
-plt.plot(tod_new)
-plt.plot(np.arange(len(tod_new))[peak_tops_default], tod_new[peak_tops_default], 'ro')
-plt.show()
-
-
-x = np.linspace(-50, 50, 100)
-cfs = [[1], gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,1,3,2,0])]
-
-
-fig, ax = plt.subplots()
-for i in range(len(cfs)):
-    cs = scipy.signal.convolve(tod_new, cfs[i], mode='same')
-
-    start_time = time.time()
-    peak_tops, signal = peakdetect(cs, lag=200, threshold=5, influence=0.3)
-    #print("--- %s seconds ---" % (time.time() - start_time))
-
-    std = np.std(cs[1:] - cs[:-1])/np.sqrt(2)
-
-    print('----- %d ------' %i)
-    for j in range(len(peak_tops_default)):
-        print('%d:    %.2f' %(peak_tops_default[j], cs[peak_tops_default[j]]/std))
-    print()
-        
-    signal_bolean = (abs(signal) > 0)
-    x = np.arange(len(cs))
-
-    ax = plt.subplot(2, 4, i+1)
-    plt.plot(cs)
-    trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
-    plt.fill_between(x, 0, 1, where=signal_bolean, alpha=0.5, color='red', transform=trans)
-    plt.plot(x[peak_tops], cs[peak_tops], 'ro', markersize=2)
-plt.show()
-
-
-
-"""
-x = np.linspace(-50, 50, 100)
-cfs = [gaussian(x, mu=0, sigma=1), gaussian(x, mu=0, sigma=2), gaussian(x, mu=0, sigma=5), gaussian(x, mu=0, sigma=10), np.array([0, 1, 1, 0]), np.array([0,1,2,1,0]), np.array([0,2,3,2,0])]
-
-
-for i in range(len(cfs)):
-    cfs[i] = cfs[i]/np.max(cfs[i])
-
-for i in range(len(cfs)):
-    plt.plot(cfs[i], label='%d' %(i+2))
-plt.legend()
-plt.show()
-
-
-peaks = scipy.signal.find_peaks(tod, prominence=np.max(tod[0:60000])*2.5)
-peak_heights = tod[peaks[0]]
-noise_std = np.std(tod[0:60000])
-sn = peak_heights/noise_std
-
-print(sn)
-#print('   %.2f          %.2f          %.2f         %.2f         %.2f' %(sn[0], sn[1], sn[2], sn[3], sn[4]))
-
-x_tod = np.linspace(0, len(tod), len(tod))
-
-plt.plot(x_tod, tod)
-plt.plot(x_tod[peaks[0]], tod[peaks[0]], 'o')
-plt.show()
-
-factors = [1,4500,9000,2750]
-i=2
-for cf in cfs:
-    #plt.plot(cf)
-    #plt.show()
-
-    cs = scipy.signal.convolve(tod, cf, mode='same')
-    #peaks = scipy.signal.find_peaks(cs, prominence=np.max(cs[65000:90000])*2)
-    peak_heights = cs[peaks[0]]
-    std_noise = np.std(cs[0:60000])
-    sn = peak_heights/std_noise
-   
-    #plt.plot(cs)
-    #plt.show()
- 
-    #print('   %.2f          %.2f          %.2f         %.2f         %.2f' %(sn[0], sn[1], sn[2], sn[3], sn[4]))
-    print(i, sn)
-    i+=1
-"""
-
-
-
-
-
-
-"""
-
-
-fcs = [0.001, 0.0005, 0.0001]
-bs = [0.1, 0.5]
-
-
-for fc in fcs:
-    for b in bs:
-        tod_new = highpass_filter(tod, fc=fc, b=b)
-        peaks = scipy.signal.find_peaks(tod_new,  prominence=np.max(tod_new[25000:50000])*2.2)
-
-        x = np.linspace(0, len(tod_new), len(tod_new))
-        peak_heights = tod_new[peaks[0]]
-        
-        #print(peak_heights)
-        if len(peak_heights) > 15:
-            peak_heights = [0]
-        noise_std = np.std(tod_new[25000:50000])
-        sns = peak_heights/noise_std
-        
-        for sn in sns:
-            print('fc = %.3f       b = %.3f        S/N = %.3f' %(fc, b, sn))
-        print()
-        
-        plt.plot(x, tod_new)
-        plt.plot(x[peaks[0]], tod_new[peaks[0]], 'o')
-        plt.show()
-
-
-print('Original tod')
-print(np.max(tod[125200:125500]))
-print(np.max(tod[125200:125500])/np.std(tod[6000:100000]))
-print()
-
-def gaussian(x, mu, sigma):
-    return 1/(sigma*np.sqrt(2*np.pi)) * np.exp(-1/2 * ((x-mu)/sigma)**2)
-
-x = np.linspace(0,len(tod), len(tod))
 
 plt.figure()
-plt.subplot(221)
 plt.plot(tod)
-#plt.plot(x[122139:122210], tod[122139:122210])
-plt.title('Original tod')
 
-print('Highpass filtered tod')
-print(np.max(tod[125200:125500]))
-print(np.max(tod[125200:125500])/np.std(tod[6000:100000]))
-print()
+if len(peak_tops)>0:
+    plt.plot(np.arange(len(tod))[peak_tops], tod[peak_tops], 'ro')
+"""
+plt.figure()
+plt.plot(tod_new)
+if len(peak_tops)>0:
+    plt.plot(np.arange(len(tod_new))[peak_tops], tod_new[peak_tops], 'ro')
+"""
+
+tod_final = peak_replace(tod, fitted_peak_tops, peak_widths)
+
+plt.figure()
+#plt.plot(tod)
+plt.plot(tod_final)#, 'r', alpha=0.7)
 
 
-#plt.figure(figsize=(4,3))
-plt.subplot(222)
-plt.plot(tod)
-#plt.plot(x[122139:122210], tod[122139:122210])
-plt.title('High-pass filtered tod')
+tod_final_new = highpass_filter(tod_final, fc=fc, b=0.001)
 
-x_cf = np.linspace(0, 2, 100)
-cf = gaussian(x_cf, 1, 0.01)#0.04)
-#cf = np.convolve(cf, sinc_func)
+peak_tops, peak_widths, fitted_peak_tops, signal = peak_detect(tod_final[::-1], tod_final_new[::-1], lag=300, threshold=5, influence=0, lim=3)
 
-#plt.figure(figsize=(4,3))
-plt.subplot(223)
-plt.plot(cf)
-plt.title('Convolving function')
+fitted_peak_tops = [ len(tod)-x-1 for x in fitted_peak_tops]
+peak_tops = [ len(tod)-x-1 for x in peak_tops]
+if len(fitted_peak_tops) > 0:
+    fitted_peak_tops, peak_widths = zip(*sorted(zip(fitted_peak_tops, peak_widths)))
+    peak_tops = np.sort(peak_tops)
 
-#plt.figure(figsize=(4,3))
-plt.subplot(224)
-plt.plot(scipy.signal.convolve(tod, cf, mode='same'))
-#plt.plot(x[122139:122210], scipy.signal.convolve(tod, cf, mode='same')[122139:122210])
-plt.title('Result from convolution')
-plt.tight_layout()
+tod_final_final = peak_replace(tod_final, fitted_peak_tops, peak_widths)
+
+plt.figure()
+plt.plot(tod_final_new)
+if len(peak_tops)>0:
+    plt.plot(np.arange(len(tod_new))[peak_tops], tod_final_new[peak_tops], 'ro')
+
+"""
+plt.figure()
+plt.plot(tod_final)
+if len(peak_tops)>0:
+    plt.plot(np.arange(len(tod_new))[peak_tops], tod_final[peak_tops], 'ro')
+"""
+plt.figure()
+plt.plot(tod_final_final)#, 'r', alpha=0.7)
+#if len(peak_tops)>0:
+#    plt.plot(np.arange(len(tod_new))[peak_tops], tod_final_final[peak_tops], 'ro')
 plt.show()
 
-print('Convolved tod')
-print(np.max(scipy.signal.convolve(tod, cf, mode='same')[125200:125500]))
-print(np.max(scipy.signal.convolve(tod, cf, mode='same')[125200:125500])/np.std(tod[6000:100000]))
+
+
+
+"""
+# Make subsequences                                                                                     
+sequences = []
+subseq_numb = 0
+while len(tod_final_final) > subseq_length*(subseq_numb+1):
+    subseq_numb += 1
+    subseq = tod_final_final[subseq_length*(subseq_numb-1):subseq_length*subseq_numb]
+    sequences.append(subseq)
+
+sequences = sequences/std
+predictions = model.predict(sequences.reshape(np.shape(sequences)[0], np.shape(sequences)[1], 1))
+
+print('After spike removal: %.4f %.4f ' %(max(predictions[:,1]), np.median(predictions[:,1])))
+  
+
+"""
+
+
+"""
+tod_final_final_new = highpass_filter(tod_final_final, fc=fc, b=0.1)
+
+peak_tops, peak_widths, fitted_peak_tops, signal = peak_detect(tod_final_final, tod_final_final_new, lag=300, threshold=5, influence=0, lim=1)
+tod_final_final_final = peak_replace(tod_final_final, fitted_peak_tops, peak_widths)
+
+plt.figure()
+plt.plot(tod_final_final_new)
+if len(peak_tops)>0:
+    plt.plot(np.arange(len(tod_new))[peak_tops], tod_final_final_new[peak_tops], 'ro')
+
+plt.figure()
+plt.plot(tod_final_final_final)#, 'r', alpha=0.7)
+#if len(peak_tops)>0:
+#    plt.plot(np.arange(len(tod_new))[peak_tops], tod_final_final[peak_tops], 'ro')
+plt.show()
+"""
+
+"""
+plt.figure()
+plt.plot(tod_new)
+plt.plot(np.arange(len(tod_new))[peak_tops_default], tod_new[peak_tops_default], 'ro')
+
+plt.figure()
+plt.plot(tod)
+plt.plot(np.arange(len(tod))[peak_tops_default], tod[peak_tops_default], 'ro')
+
+plt.show()
+
+
+
+print(peak_tops_default)
+"""
 
 
 
 
+"""
+#make a fitting function that takes x number of peak widths
+def makeFunction(indices, data):
+    def fitFunction(x, *args):
+        #sum of gaussian functions with centers at peak_indices and heights at data[peak_indices] plus a constant for background noise (args[-1])
+        return sum([data[indices[i]]*np.exp(-((x-indices[i])**2)/(2*args[i]**2)) for i in range(len(indices))])+args[-1]       
+    return fitFunction
+
+x = np.arange(len(tod_new))
+
+plt.figure()
+plt.plot(tod-np.mean(tod))
+plt.grid()
+plt.plot(np.arange(len(tod_new))[peak_tops_default], tod_new[peak_tops_default], 'ro')
+
+f = makeFunction(peak_tops_default, tod_new)
+
+popt, pcov = curve_fit(f, np.arange(len(tod_new)), tod_new, np.ones(len(peak_tops_default)+1))
+
+#standard deviations (widths) of each gaussian peak and the average of the background noise
+stdevs, background = popt[:-1], popt[-1]
+#covariance of result variables
+stdevcov, bgcov = pcov[:-1], pcov[-1]
+
+plt.plot(x, f(x, *popt))
 
 
+for j in range(len(peak_tops_default)):
+    #g = gaussian(x, peak_tops_default[j], stdevs[j])
+    #g = g/np.max(g)
+    #print(j, np.sum(g>0.001))
+    print(j, stdevs[j]*6)
+
+    #print(g[peak_tops_default[j]-50:peak_tops_default[j]+50])
+
+plt.show()
+
+"""
+"""
+    plt.plot(g*tod_new[peak_tops_default[j]], alpha=0.7)
+
+plt.figure()
+plt.plot(tod)
+plt.plot(np.arange(len(tod))[peak_tops_default], tod[peak_tops_default], 'ro')
+plt.grid()
+plt.show()
 """
