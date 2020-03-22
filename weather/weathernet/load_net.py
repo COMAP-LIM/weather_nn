@@ -98,6 +98,7 @@ for el in folders:
 files.sort()
 
 
+
 if os.path.exists('weather_list_obsid.txt'):
     last_checked_obsid = np.loadtxt('weather_list_obsid.txt', dtype=int, usecols=(0))[-1]
     last_checked = '%07d' %last_checked_obsid
