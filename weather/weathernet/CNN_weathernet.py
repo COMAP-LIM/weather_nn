@@ -60,6 +60,13 @@ def create_dataset(path_good, path_bad, n=False):
     X_train, ps_train, indices_train, obsids_train = read_files(training_data)
     X_test, ps_test, indices_test, obsids_test = read_files(testing_data)
 
+    """
+    for i in range(len(obsids_train)):
+        plt.plot(X_train[i])
+        plt.title('Label: %d, obsID: %d' %(training_labels[i], obsids_train[i]))
+        plt.show()
+    """
+
     std = np.std(X_train)
     X_train = X_train/std
     X_test = X_test/std
@@ -369,6 +376,6 @@ def heatmap_convolving_layers():
     
 
 if __name__ == '__main__':
-    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = create_dataset('good_samples/', 'bad_samples/')
-    model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=True)
+    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = create_dataset('good_test2/', 'bad_test2/')
+    model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=False)
     #mean_accuracy()

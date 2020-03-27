@@ -4,7 +4,7 @@ import random
 import cv2, os, glob
 import matplotlib.pyplot as plt
 from keras.models import load_model
-from create_dataset import preprocess_data
+#from create_dataset import preprocess_data
 import sys
 import h5py
 import julian
@@ -12,6 +12,62 @@ from scipy.optimize import curve_fit
 import matplotlib
 import time 
 
+def remove_elevation_gain(X, g, a, c, d, e):
+    """
+    Template for elevation gain. 
+    """
+    t, el, az = X
+    return  g/np.sin(el*np.pi/180) + az*a + c + d*t + e*t**2
+
+
+def preprocess_data(data, el, az, obsid):
+    """
+    Preprocesses the data by normalizing, averaging over feeds 
+    and sideband, removing elevation gain and azimuth structures
+    and subtracting mean.
+    Args:
+        data (ndarray): 3D array containing sidebandaverage tods.
+        el (ndarray): Array containing elevation for each data point. 
+        az (ndarray): Array containing azimuth for each data point.
+        obsid (str): The obsID of the tod
+    Returns:
+        data (ndarray): 1D preprocessed data. 
+    """
+
+    # Normalizing by dividing each feed on its own mean
+    for i in range(np.shape(data)[0]):
+        for j in range(np.shape(data)[1]):
+            data[i][j] = data[i][j]/np.nanmean(data[i][j])-1
+
+                 
+    # Mean over feeds and sidebands           
+    data = np.nanmean(data, axis=0)
+    data = np.nanmean(data, axis=0)
+
+
+    # Calculating template for elevation gain and azimuth structue removal 
+    part = int(len(el)/4)
+
+    t = np.arange(len(el))
+    diff = np.zeros(len(el))
+    temp = np.zeros(len(el))
+    for i in range(4):
+        popt, pcov = curve_fit(remove_elevation_gain, (t[part*i:part*(i+1)],el[part*i:part*(i+1)], az[part*i:part*(i+1)]), data[part*i:part*(i+1)])
+        g = popt[0]
+        a = popt[1]
+
+        temp[part*i:part*(i+1)] = g/np.sin(el[part*i:part*(i+1)]*np.pi/180) + a*az[part*i:part*(i+1)]
+        diff[part*i:part*(i+1)] = (data[part*i-1] - temp[part*i-1]) - (data[part*i] - temp[part*i]) + diff[part*(i-1)]
+
+    # Removing elevation gain and azimuth structures
+    data = data - temp + diff
+ 
+    #plt.figure(figsize=(4,3))
+    #plt.plot(data)
+   
+    data = data - np.mean(data)
+
+    return data
 
 def subsequencegen(filename):
     # Calculating subsequence length 
@@ -74,7 +130,10 @@ def subsequencegen(filename):
         subel = el[subseq_length*(subseq_numb-1):subseq_length*subseq_numb]
         subaz = az[subseq_length*(subseq_numb-1):subseq_length*subseq_numb]
 
+        # subseq = remove_elevation_structures(subsew, subel, subaz)
+        # subseq = remove_spikes(subel)
         subseq = preprocess_data(subseq, subel, subaz, obsid)
+        
 
         sequences.append(subseq)
 
@@ -112,7 +171,10 @@ s = 0
 for f in files[last_checked_index+1:]:
     s+=1
     obsid = f[59:66]
+
+    # Legge inn paralellprosessering her 
     sequences, MJD_start = subsequencegen(f)
+
     if sequences is None:
         continue 
 

@@ -6,7 +6,7 @@ from scipy.optimize import curve_fit
 import getopt
 
 
-def extract_data_to_file(textfile, output_folder, generate_more_data=False, n=10):
+def extract_data_to_file(textfile, output_folder, generate_more_data=False, n=5):
     """
     Opens files listed in textfile, reads in relevant values
     and writes only relevant, preprocessed information to 
@@ -27,7 +27,7 @@ def extract_data_to_file(textfile, output_folder, generate_more_data=False, n=10
     f = open(textfile, 'r')
     lines = f.readlines()
 
-    for line in lines[:2]:
+    for line in lines:
         filename = line.split()[0]
         index1 = int(line.split()[1])
         index2 = int(line.split()[2])
@@ -39,8 +39,8 @@ def extract_data_to_file(textfile, output_folder, generate_more_data=False, n=10
         path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/' + month + '/'
         with h5py.File(path + filename, 'r') as hdf:
             tod       = np.array(hdf['spectrometer/band_average'])
-            el        = np.array(hdf['spectrometer/pixel_pointing/pixel_el'][0])
-            az        = np.array(hdf['spectrometer/pixel_pointing/pixel_az'][0])
+            el        = np.array(hdf['spectrometer/pixel_pointing/pixel_el'])
+            az        = np.array(hdf['spectrometer/pixel_pointing/pixel_az'])
             features  = np.array(hdf['spectrometer/features'])
 
         # Removing Tsys measurements  
@@ -52,13 +52,13 @@ def extract_data_to_file(textfile, output_folder, generate_more_data=False, n=10
             boolTsys[np.max(indexTsys):] = False
 
         tod       = tod[:,:,boolTsys]
-        el        = el[boolTsys]
-        az        = az[boolTsys]
+        el        = el[:,boolTsys]
+        az        = az[:,boolTsys]
 
         # Extracting subsequence 
         tod       = tod[:,:,index1:index2]
-        el        = el[index1:index2]
-        az        = az[index1:index2]
+        el        = el[:,index1:index2]
+        az        = az[:,index1:index2]
 
         """
         print(obsid)
@@ -68,8 +68,12 @@ def extract_data_to_file(textfile, output_folder, generate_more_data=False, n=10
             plt.plot(np.mean(tod, axis=1)[i])
         """
     
-        # Preprocessing     
-        tod = preprocess_data(tod, el, az, obsid)
+        # Preprocessing   
+        where_are_NaNs = np.isnan(tod)
+        tod[where_are_NaNs] = 0
+        tod = remove_elevation_azimuth_structures(tod, el, az)
+        #tod = remove_spikes(tod)
+        tod = preprocess_data(tod)
 
         """
         plt.figure(figsize=(3,2))
@@ -120,15 +124,57 @@ def extract_data_to_file(textfile, output_folder, generate_more_data=False, n=10
             hdf.create_dataset('obsid', data=obsid)
         
 
-def remove_elevation_gain(X, g, a, c, d, e):
+def elevation_azimuth_template(X, g, a, c, d, e):
     """
-    Template for elevation gain. 
+    Template for elevation gain and azimuth correlations. 
     """
     t, el, az = X
     return  g/np.sin(el*np.pi/180) + az*a + c + d*t + e*t**2
 
 
-def preprocess_data(data, el, az, obsid):
+def remove_elevation_azimuth_structures(tod, el, az):
+    for feed in range(np.shape(tod)[0]):
+        for sideband in range(np.shape(tod)[1]):
+            num_parts = 4
+            part = int(np.shape(el)[1]/num_parts)
+
+            # Calculating template for elevation gain and azimuth structue removal 
+            t = np.arange(np.shape(el)[1])
+            diff = np.zeros(np.shape(el)[1])
+            temp = np.zeros(np.shape(el)[1])
+            for i in range(num_parts):
+                if np.all(tod[feed, sideband, part*i:]==0):
+                    continue
+                else:
+                    if i == num_parts-1:
+                        popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:],el[feed, \
+                                part*i:], az[feed, part*i:]), tod[feed, sideband, part*i:])
+                        g = popt[0]
+                        a = popt[1]
+
+                        temp[part*i:] = g/np.sin(el[feed, part*i:]*np.pi/180) + \
+                                    a*az[feed, part*i:]
+                        diff[part*i:] = (tod[feed, sideband, part*i-1] - temp[part*i-1]) - \
+                                    (tod[feed, sideband, part*i] - temp[part*i]) + diff[part*(i-1)]
+
+                    else:
+                        popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:part*(i+1)], \
+                                el[feed, part*i:part*(i+1)], az[feed,  \
+                                part*i:part*(i+1)]), tod[feed, sideband, part*i:part*(i+1)])
+                        g = popt[0]
+                        a = popt[1]
+                    
+                        temp[part*i:part*(i+1)] = g/np.sin(el[feed, part*i:part*(i+1)] \
+                                        *np.pi/180) + a*az[feed, part*i:part*(i+1)]
+                        diff[part*i:part*(i+1)] = (tod[feed, sideband, part*i-1] - temp[part*i-1]) \
+                            - (tod[feed, sideband, part*i]- temp[part*i]) + diff[part*(i-1)]
+
+            # Removing elevation gain and azimuth structures
+            tod[feed, sideband] = tod[feed, sideband] - temp + diff
+
+    return tod
+
+def preprocess_data(data):
     """
     Preprocesses the data by normalizing, averaging over feeds 
     and sideband, removing elevation gain and azimuth structures
@@ -144,36 +190,16 @@ def preprocess_data(data, el, az, obsid):
     """
 
     # Normalizing by dividing each feed on its own mean
-    for i in range(np.shape(data)[0]):
-        for j in range(np.shape(data)[1]):
-            data[i][j] = data[i][j]/np.nanmean(data[i][j])-1
+    for feed in range(np.shape(data)[0]):
+        for sideband in range(np.shape(data)[1]):
+            data[feed][sideband] = data[feed][sideband]/np.nanmean(data[feed][sideband])-1
 
                  
     # Mean over feeds and sidebands           
     data = np.nanmean(data, axis=0)
     data = np.nanmean(data, axis=0)
 
-
-    # Calculating template for elevation gain and azimuth structue removal 
-    part = int(len(el)/4)
-
-    t = np.arange(len(el))
-    diff = np.zeros(len(el))
-    temp = np.zeros(len(el))
-    for i in range(4):
-        popt, pcov = curve_fit(remove_elevation_gain, (t[part*i:part*(i+1)],el[part*i:part*(i+1)], az[part*i:part*(i+1)]), data[part*i:part*(i+1)])
-        g = popt[0]
-        a = popt[1]
-
-        temp[part*i:part*(i+1)] = g/np.sin(el[part*i:part*(i+1)]*np.pi/180) + a*az[part*i:part*(i+1)]
-        diff[part*i:part*(i+1)] = (data[part*i-1] - temp[part*i-1]) - (data[part*i] - temp[part*i]) + diff[part*(i-1)]
-
-    # Removing elevation gain and azimuth structures
-    data = data - temp + diff
- 
-    #plt.figure(figsize=(4,3))
-    #plt.plot(data)
-   
+    # Zero-center data 
     data = data - np.mean(data)
 
     return data
@@ -217,9 +243,15 @@ def generate_data(data):
     return new_data
 
 def usage():
+    print('No')
     sys.exit(2)
 
 if __name__ == '__main__':
+    textfile = 'data/bad_subsequences_ALL.txt'
+    output_folder = 'bad_test2/'
+    extract_data_to_file(textfile, output_folder, generate_more_data=True, n=5)
+
+    """
     if len(sys.argv) > 3:
         try:
             opts, args = getopt.getopt(sys.argv[1:], 't:o:g:n:', ['textfile=', 'output_folder=", "generate_data=', 'number='])
@@ -249,7 +281,7 @@ if __name__ == '__main__':
         extract_data_to_file(textfile, output_folder, generate_more_data)
     else:
         extract_data_to_file(textfile, output_folder)
-
+    """
     #textfile = 'data/bad_subsequences_ALL.txt'
     #output_folder = 'bad_test/'
     #extract_data_to_file(textfile, output_folder, generate_more_data=True, n=5)

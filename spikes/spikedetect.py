@@ -178,13 +178,9 @@ def spike_detect(y, y_highpass, lag=5, threshold=10, influence=0, lim=3):
 
     # Find all data points detected as spikes
     for i in range(lag, len(y)):
-        #if (y_highpass[i] - average[i-1]) > threshold*std[i-1]: # Detects only positive spikes
-        if np.abs(y_highpass[i] - average[i-1]) > threshold*std[i-1]:
-            if y_highpass[i] > average[i-1]:
-                signal[i] = 1
-            else:
-                signal[i] = -1
-                y_filtered[i] = influence*y_highpass[i] + (1-influence)*y_filtered[i-1]
+        if (y_highpass[i] - average[i-1]) > threshold*std[i-1]:
+            signal[i] = 1
+            y_filtered[i] = influence*y_highpass[i] + (1-influence)*y_filtered[i-1]
         else:
             signal[i] = 0
             y_filtered[i] = y_highpass[i]
@@ -192,10 +188,6 @@ def spike_detect(y, y_highpass, lag=5, threshold=10, influence=0, lim=3):
         average[i] = np.mean(y_filtered[i-lag+1:i+1])
         std[i] = np.std(y_filtered[i-lag+1:i+1])
     
-    #std = np.std(y[1:]-y[:-1])/np.sqrt(2)
-    #signal = (y_highpass > 5*std) + (y_highpass < -5*std)
-    
-
     peak_indices = np.nonzero(signal)[0]
     cut = []
     for i in range(1, len(peak_indices)):
@@ -209,7 +201,6 @@ def spike_detect(y, y_highpass, lag=5, threshold=10, influence=0, lim=3):
     std_before_top = []
     if len(peak_indices[0])>0:
         for i in range(len(peak_indices)):
-            #peak_tops.append(peak_indices[i][0] + int(len(peak_indices[i])/2))
             peak_tops.append(peak_indices[i][np.argmax(abs(y[peak_indices[i]]))])
             std_before_top.append(std[peak_tops[-1]])
 
@@ -226,11 +217,11 @@ def spike_detect(y, y_highpass, lag=5, threshold=10, influence=0, lim=3):
             half_width = popt[-1]*3 # 3 standard deviations from the peak top in each direction
             fitted_peak_tops.append(peak_tops[j]-100+popt[0])
         
-            plt.figure()
-            plt.plot(subseq)
-            plt.plot(fitted, alpha=0.7)
-            plt.plot(100, subseq[100], 'ro')
-            plt.show()
+            #plt.figure()
+            #plt.plot(subseq)
+            #plt.plot(fitted, alpha=0.7)
+            #plt.plot(100, subseq[100], 'ro')
+            #plt.show()
 
         except:
             print('Could not find optimal values for this index:', peak_tops[j])
@@ -242,7 +233,7 @@ def spike_detect(y, y_highpass, lag=5, threshold=10, influence=0, lim=3):
     return peak_tops, peak_widths, fitted_peak_tops, std_before_top, signal
 
 
-def spike_replace(data, peak_tops, peak_widths, std_before_top):
+def spike_replace(data, peak_tops, peak_widths, subseq_num):
     new_data = np.copy(data)
     x1_list = [0]
     x2_list = [0]
@@ -261,7 +252,7 @@ def spike_replace(data, peak_tops, peak_widths, std_before_top):
         else:
             x1_list.append(x1)
             x2_list.append(x2)
-            std_list.append(std_before_top[j])
+            #std_list.append(std_before_top[j])
 
     for j in range(1,len(x1_list)):
         x1 = x1_list[j]
@@ -285,20 +276,20 @@ def spike_replace(data, peak_tops, peak_widths, std_before_top):
             noise[0] = y1
             noise[-1] = y2
 
-            #plt.plot(x, noise, 'r', alpha=0.7)
+            plt.plot(subseq_num*30000 + x, noise, 'r', alpha=0.7)
             new_data[x1:x2+1] = noise
     
     return new_data
 
 
-def remove_spikes(data):
+def remove_spikes(data, subseq_num):
     fc = 0.001 #0.001
     b = 0.01 #0.01
     
     
     data_highpass = highpass_filter(data, fc=fc, b=b)
     peak_tops, peak_widths, fitted_peak_tops, std_before_top, signal = spike_detect(data, data_highpass, lag=300, threshold=5, influence=0)
-    data_clean = spike_replace(data, fitted_peak_tops, peak_widths, std_before_top)
+    data_clean = spike_replace(data, fitted_peak_tops, peak_widths, subseq_num)
 
     #fitted_peak_tops = [ int(x) for x in fitted_peak_tops ]
     #if len(peak_tops)>0: 
@@ -319,7 +310,7 @@ def remove_spikes(data):
     #    plt.plot(np.arange(len(data))[fitted_peak_tops], data[fitted_peak_tops], 'bo', alpha=0.3)
    
             
-    data_final_full = spike_replace(data_clean, fitted_peak_tops, peak_widths,std_before_top)
+    data_final_full = spike_replace(data_clean, fitted_peak_tops, peak_widths,subseq_num)
     
     """
     data_final_full = np.zeros(np.shape(data))
@@ -374,9 +365,9 @@ def remove_spikes(data):
 #filename = 'comap-0008229-2019-10-09-050335.hd5' # broad spike
 #filename = 'comap-0008312-2019-10-13-011517.hd5' # broad spike
 #filename = 'comap-0011480-2020-02-19-004954.hd5' # weather
-filename = 'comap-0010676-2020-01-22-023457.hd5' # weather
+#filename = 'comap-0010676-2020-01-22-023457.hd5' # weather
 #filename = 'comap-0006541-2019-06-16-232518.hd5' # spike storm
-#filename = 'comap-0006653-2019-06-27-000128.hd5' # spike storm 
+filename = 'comap-0006653-2019-06-27-000128.hd5' # spike storm 
 #filename = 'comap-0006800-2019-07-08-232544.hd5' # spike storm 
 #filename = 'comap-0006801-2019-07-09-005158.hd5' # spike strom
 #filename = 'comap-0008173-2019-10-06-211355.hd5'
@@ -398,52 +389,28 @@ full_tod = np.zeros((np.shape(sequences)[1], np.shape(sequences)[2], np.shape(se
 for i in range(len(sequences)):
     full_tod[:,:,np.shape(sequences)[3]*i:np.shape(sequences)[3]*(i+1)] = sequences[i]
 
+feed = 10
+sideband =2
 
 plt.figure()
-plt.plot(full_tod[14,0])
+plt.plot(full_tod[feed,sideband])
 
+start_time = time.time()
+sequences1 = []
+for i in range(len(sequences)):
+    print(i)
+    sequences1.append(remove_spikes(sequences[i][feed,sideband],i))
+print("--- %s seconds ---" % (time.time() - start_time))
 
-full_tod1 = remove_spikes(full_tod[14,0])
+full_tod1 = np.zeros((np.shape(sequences)[3]*len(sequences)))
+for i in range(len(sequences)):
+    full_tod1[np.shape(sequences)[3]*i:np.shape(sequences)[3]*(i+1)] = sequences1[i]
+
 plt.figure()
 plt.plot(full_tod1)
 plt.show()
 
 """
-plt.figure()
-plt.plot(full_tod[0,0])
-plt.title('Original tod')
-
-sequence = sequences[3]
-
-plt.figure()
-plt.plot(sequence[0,0])
-plt.title('First sequence')
-
-
-plt.figure()
-plt.plot(preprocess_data(sequence))
-plt.title('Only preprocessing')
-
-start_time = time.time()
-prep_seq = remove_spikes(sequence)
-#prep_seq = preprocess_data(sequence)
-print("--- %s seconds ---" % (time.time() - start_time))
-
-plt.figure()
-plt.plot(prep_seq[0,0])
-plt.title('Spikes removed')
-
-#start_time = time.time()
-prep_seq = preprocess_data(prep_seq)
-#prep_seq = remove_spikes(prep_seq)
-#print("--- %s seconds ---" % (time.time() - start_time))
-
-plt.figure()
-plt.plot(prep_seq)
-plt.title('Preprocessing done')
-plt.show()
-
-
 prep_seq = prep_seq/std
 predictions = model.predict(np.array(prep_seq).reshape(1,len(prep_seq), 1))
 
@@ -453,137 +420,4 @@ predictions2 = model.predict(np.array(seq).reshape(1,len(seq),1))
 print('After spike removal: %.4f ' %(predictions[0][1]))
 print('Before spike removal: %.4f ' %(predictions2[0][1]))
 
-"""
-"""
-
-prep_sequneces = []
-prep_sequneces2 = []
-prep_sequences3 = []
-for j in range(len(sequences[:2])):
-    prep_sequneces2.append(preprocess_data(sequences[j]))
-    prep_seq = remove_spikes(sequences[j])
-    prep_sequences3.append(prep_seq)
-    prep_seq = preprocess_data(prep_seq)
-    prep_sequneces.append(prep_seq)
-
-
-print(np.shape(prep_sequences3))
-
-
-only_spikes = np.zeros((np.shape(prep_sequences3)[1], np.shape(prep_sequences3)[2], np.shape(prep_sequences3)[3]*len(prep_sequences3)))
-for i in range(len(prep_sequences3)):
-    only_spikes[:,:,np.shape(prep_sequences3)[3]*i:np.shape(prep_sequences3)[3]*(i+1)] = prep_sequences3[i]
-
-
-full_tod_final = np.append(prep_sequneces[0], prep_sequneces[1:])
-
-plt.figure()
-plt.plot(np.append(prep_sequneces2[0], prep_sequneces2[1:]))
-plt.title('Only preprocessed')
-
-plt.figure()
-plt.plot(only_spikes[0,0])
-plt.title('Only removed spikes for feed 0, sideband 0')
-
-plt.figure()
-plt.plot(full_tod_final)
-plt.title('Removed spikes, and preprocessed')
-plt.show()
-
-prep_sequneces = prep_sequneces/std
-predictions = model.predict(np.array(prep_sequneces).reshape(np.shape(prep_sequneces)[0], np.shape(prep_sequneces)[1], 1))
-
-prep_sequneces2 = prep_sequneces2/std
-predictions2 = model.predict(np.array(prep_sequneces2).reshape(np.shape(prep_sequneces2)[0], np.shape(prep_sequneces2)[1], 1))
-
-
-print('After spike removal: %.4f %.4f ' %(max(predictions[:,1]), np.median(predictions[:,1])))
-print('Before spike removal: %.4f %.4f ' %(max(predictions2[:,1]), np.median(predictions2[:,1])))
-
-sys.exit(1)
-
-fc = 0.001
-b = 0.01#0.1#0.001   # If bad weather: 0.1
-
-
-plt.figure()
-plt.plot(np.append(sequences[0], sequences[1:]))
-
-sequences_new = []
-for j in range(len(sequences)):
-    tod = sequences[j]
-    tod_new = highpass_filter(tod, fc=fc, b=b)
-    peak_tops, peak_widths, fitted_peak_tops, signal = peak_detect(tod, tod_new, lag=300, threshold=5, influence=0.1)
-    tod_final = peak_replace(tod, fitted_peak_tops, peak_widths)
-    sequences_new.append(tod_final)
- 
-   
-full_tod = np.append(sequences_new[0], sequences_new[1:])
-
-plt.figure()
-plt.plot(full_tod)
-
-
-sequences_new_new = []
-sequences_highpass = []
-all_peaks = []
-for j in range(len(sequences)):
-    tod = sequences_new[j]
-    tod_new = highpass_filter(tod, fc=fc, b=b)
-    peak_tops, peak_widths, fitted_peak_tops, signal = peak_detect(tod[::-1], tod_new[::-1], lag=500, threshold=5, influence=0.1, lim=3)
-    fitted_peak_tops = [ len(tod)-x-1 for x in fitted_peak_tops]
-    peak_tops = [ len(tod)-x-1 for x in peak_tops]
-    if len(fitted_peak_tops) > 0:
-        fitted_peak_tops, peak_widths = zip(*sorted(zip(fitted_peak_tops, peak_widths)))
-        peak_tops = np.sort(peak_tops)
-
-    all_peaks.extend(j*30000 + np.array(fitted_peak_tops, dtype=int))
-    sequences_highpass.append(tod_new)
-    tod_final = peak_replace(tod, fitted_peak_tops, peak_widths)
-    sequences_new_new.append(tod_final)
-
-full_tod_final = np.append(sequences_new_new[0], sequences_new_new[1:])
-
-plt.figure()
-plt.plot(np.append(sequences_highpass[0], sequences_highpass[1:]))
-if len(peak_tops)>0:
-    print(type(all_peaks))
-    plt.plot(np.arange(len(full_tod))[all_peaks], np.append(sequences_highpass[0], sequences_highpass[1:])[all_peaks], 'ro')
-
-
-plt.figure()
-plt.plot(full_tod_final)
-for i in range(len(sequences_new_new)):
-         plt.axvline(x=i*30000, color='r', alpha=0.2)
-plt.show()
-
-"""
-"""
-prep_seq2 = []
-for j in range(len(sequences_new_new)):
-    prep_seq2.append(preprocess_data(sequences_new_new[j]))
-
-prep_seq2 = prep_seq2/std
-predictions = model.predict(prep_seq2.reshape(np.shape(prep_seq2)[0], np.shape(prep_seq2)[1], 1))
-
-print('After spike removal: %.4f %.4f ' %(max(predictions[:,1]), np.median(predictions[:,1])))
-"""
-
-
-"""
-sequences_new_new_new = []
-for j in range(len(sequences)):
-    tod = sequences_new_new[j]
-    tod_new = highpass_filter(tod, fc=fc, b=fc)
-    peak_tops, peak_widths, fitted_peak_tops, signal = peak_detect(tod, tod_new, lag=500, threshold=5, influence=0.5, lim=3)
-    tod_final = peak_replace(tod, fitted_peak_tops, peak_widths)
-    sequences_new_new_new.append(tod_final)
-
-full_tod_final_final = np.append(sequences_new_new_new[0], sequences_new_new_new[1:])
-
-plt.figure()
-plt.plot(full_tod_final_final)
-for i in range(len(sequences_new_new)):
-         plt.axvline(x=i*30000, color='r', alpha=0.2)
-plt.show()
 """
