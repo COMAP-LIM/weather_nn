@@ -203,6 +203,7 @@ def spike_detect(y, y_highpass, lag=5, threshold=10, influence=0, lim=3):
         for i in range(len(peak_indices)):
             peak_tops.append(peak_indices[i][np.argmax(abs(y[peak_indices[i]]))])
             std_before_top.append(std[peak_tops[-1]])
+            #print(peak_tops[-1])
 
     # Estimate the width of each spike
     peak_widths = []
@@ -262,6 +263,8 @@ def spike_replace(data, peak_tops, peak_widths, subseq_num):
             x2 = len(data)-1        
 
         else:
+            print(x1 + np.argmax(data[x1:x2]))
+
             y1 = data[x1]
             y2 = data[x2]
         
@@ -367,13 +370,15 @@ def remove_spikes(data, subseq_num):
 #filename = 'comap-0011480-2020-02-19-004954.hd5' # weather
 #filename = 'comap-0010676-2020-01-22-023457.hd5' # weather
 #filename = 'comap-0006541-2019-06-16-232518.hd5' # spike storm
-filename = 'comap-0006653-2019-06-27-000128.hd5' # spike storm 
+#filename = 'comap-0006653-2019-06-27-000128.hd5' # spike storm 
 #filename = 'comap-0006800-2019-07-08-232544.hd5' # spike storm 
 #filename = 'comap-0006801-2019-07-09-005158.hd5' # spike strom
 #filename = 'comap-0008173-2019-10-06-211355.hd5'
 #filename = 'comap-0008356-2019-10-14-185407.hd5'
 #filename = 'comap-0008357-2019-10-14-200315.hd5'
 #filename = 'comap-0009493-2019-11-24-145131.hd5'
+
+filename = 'comap-0008403-2019-10-16-235302.hd5'
 
 
 from keras.models import load_model
@@ -389,26 +394,35 @@ full_tod = np.zeros((np.shape(sequences)[1], np.shape(sequences)[2], np.shape(se
 for i in range(len(sequences)):
     full_tod[:,:,np.shape(sequences)[3]*i:np.shape(sequences)[3]*(i+1)] = sequences[i]
 
-feed = 10
-sideband =2
+feed = 0
+sideband = 0
 
-plt.figure()
-plt.plot(full_tod[feed,sideband])
+for feed in range(np.shape(full_tod)[0]):
+    for sideband in range(np.shape(full_tod)[1]):
+        print(feed, sideband)
+        plt.figure()
+        plt.plot(full_tod[feed,sideband])
+        plt.title('Feed: %d, Sideband: %d' %(feed, sideband))
 
-start_time = time.time()
-sequences1 = []
-for i in range(len(sequences)):
-    print(i)
-    sequences1.append(remove_spikes(sequences[i][feed,sideband],i))
-print("--- %s seconds ---" % (time.time() - start_time))
-
+        start_time = time.time()
+        sequences1 = []
+        for i in range(len(sequences)):
+            print(i)
+            sequences1.append(remove_spikes(sequences[i][feed,sideband],i))
+        print("--- %s seconds ---" % (time.time() - start_time))
+        plt.show()
+        
+"""
 full_tod1 = np.zeros((np.shape(sequences)[3]*len(sequences)))
 for i in range(len(sequences)):
     full_tod1[np.shape(sequences)[3]*i:np.shape(sequences)[3]*(i+1)] = sequences1[i]
+plt.show()
 
 plt.figure()
 plt.plot(full_tod1)
 plt.show()
+
+"""
 
 """
 prep_seq = prep_seq/std
