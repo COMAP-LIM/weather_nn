@@ -1,6 +1,6 @@
 import numpy as np 
 from scipy.optimize import curve_fit
-
+import matplotlib.pyplot as plt
 
 def scale(data):
     """
@@ -32,7 +32,7 @@ def elevation_azimuth_template(X, g, a, c, d, e):
     return  g/np.sin(el*np.pi/180) + az*a + c + d*t + e*t**2
 
 
-def remove_elevation_azimuth_structures(data, el, az):
+def remove_elevation_azimuth_structures(data, el, az, plot=False):
     """
     Removes elevation gain and azimuth structures for each feed and sideband. 
     """
@@ -45,6 +45,7 @@ def remove_elevation_azimuth_structures(data, el, az):
             t = np.arange(np.shape(el)[1])
             diff = np.zeros(np.shape(el)[1])
             temp = np.zeros(np.shape(el)[1])
+            fitted = np.zeros(np.shape(el)[1])
 
             for i in range(num_parts):
                 if np.all(data[feed, sideband, part*i:part*(i+1)]==0):
@@ -52,7 +53,7 @@ def remove_elevation_azimuth_structures(data, el, az):
                 else:
                     if i == num_parts-1:
                         popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:],el[feed, \
-                                part*i:], az[feed, part*i:]), data[feed, sideband, part*i:])
+                                        part*i:], az[feed, part*i:]), data[feed, sideband, part*i:])
                         g = popt[0]
                         a = popt[1]
 
@@ -61,6 +62,7 @@ def remove_elevation_azimuth_structures(data, el, az):
                         diff[part*i:] = (data[feed, sideband, part*i-1] - temp[part*i-1]) - \
                                     (data[feed, sideband, part*i] - temp[part*i]) + diff[part*(i-1)]
 
+                        fitted[part*i:] = elevation_azimuth_template((t[part*i:],el[feed, part*i:], az[feed, part*i:]), *popt)
                     else:
                         popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:part*(i+1)], \
                                 el[feed, part*i:part*(i+1)], az[feed,  \
@@ -72,9 +74,18 @@ def remove_elevation_azimuth_structures(data, el, az):
                                         *np.pi/180) + a*az[feed, part*i:part*(i+1)]
                         diff[part*i:part*(i+1)] = (data[feed, sideband, part*i-1] - temp[part*i-1]) \
                             - (data[feed, sideband, part*i]- temp[part*i]) + diff[part*(i-1)]
+                        fitted[part*i:part*(i+1)] = elevation_azimuth_template((t[part*i:part*(i+1)],el[feed, part*i:part*(i+1)], az[feed, part*i:part*(i+1)]), *popt)
+                    
+
+            if plot: 
+                if feed == 0 and sideband == 0:
+                    plt.plot(fitted, 'r', alpha=0.7, linewidth=1, label='Fitted template')
+
+
 
             # Removing elevation gain and azimuth structures 
             data[feed, sideband] = data[feed, sideband] - temp + diff
+            
 
     return data
 
@@ -162,27 +173,31 @@ def spike_detect(data, lag=5, threshold=10, influence=0):
     if len(spike_indices[0])>0:
         for i in range(len(spike_indices)):
             spike_tops.append(spike_indices[i][np.argmax(abs(data[spike_indices[i]]))])
-    
-    # Estimate the width of each spike    
+            
+    # Estimate the width of each spike and calculate signal to noise
     spike_widths = []
     fitted_spike_tops = []
+    spike_ampls = []
+    std_noise = np.std(data[1:]-data[:-1])/np.sqrt(2)
     for j in range(len(spike_tops)):
-        subseq = data[spike_tops[j]-100:spike_tops[j]+100]
+        n = 100
+        subseq = data[spike_tops[j]-n:spike_tops[j]+n]
         x = np.arange(len(subseq))
-
         try:
-            popt, pcov = curve_fit(gaussian, (x, np.ones(len(subseq))*subseq[100]), subseq, bounds=((97,-1e10, 0),(103,1e10, 200)))
-            fitted = gaussian((x, subseq[100]), *popt)
+            popt, pcov = curve_fit(gaussian, (x, np.ones(len(subseq))*subseq[n]), subseq, bounds=((n-3,-1e10, 0),(n+3,1e10, 2*n)))
+            fitted = gaussian((x, subseq[n]), *popt)
             half_width = popt[-1]*3 # 3 standard deviations from the spike top in each direction 
             fitted_spike_tops.append(spike_tops[j]-100+popt[0])
+            spike_ampls.append((subseq[n] - popt[1])/std_noise)
         except:
             # Skip spike, could not find optimal values
             half_width = 0
             fitted_spike_tops.append(spike_tops[j])
+            spike_ampls.append(0)
 
         spike_widths.append(half_width)
-
-    return spike_tops, fitted_spike_tops, spike_widths
+    
+    return spike_tops, fitted_spike_tops, spike_widths, spike_ampls
 
 
 def spike_replace(data, spike_tops, spike_widths):
@@ -193,9 +208,7 @@ def spike_replace(data, spike_tops, spike_widths):
     
     x1_list = [0]
     x2_list = [0]
-    final_peaks = []
-    final_widths = []
-    
+   
     # Ensures that no spikes overlaps 
     for j in range(len(spike_tops)):
         spike_width = np.ceil(spike_widths[j])
@@ -221,9 +234,6 @@ def spike_replace(data, spike_tops, spike_widths):
             x2 = len(data)-1
 
         else:
-            final_peaks.append(x1 + np.argmax(data[x1:x2]))
-            final_widths.append(x2-x1)
-            
             y1 = data[x1]
             y2 = data[x2]
 
@@ -234,14 +244,14 @@ def spike_replace(data, spike_tops, spike_widths):
             x = np.arange(x1,x2+1)
             y = m*x + b
 
-            std =np.std(data[1:]-data[:-1])/np.sqrt(2)
+            std = np.std(data[1:]-data[:-1])/np.sqrt(2)            
             noise = np.random.normal(y, std)                                                
             noise[0] = y1
             noise[-1] = y2
 
             new_data[x1:x2+1] = noise
 
-    return new_data, final_peaks, final_widths
+    return new_data
 
 def remove_spikes(data):
     """
@@ -250,17 +260,15 @@ def remove_spikes(data):
     data_final_full = np.zeros(np.shape(data))
     for feed in range(np.shape(data)[0]): 
         for sideband in range(np.shape(data)[1]):                                         
-            spike_tops, fitted_spike_tops, spike_widths = spike_detect(data[feed,sideband], lag=300, threshold=5, influence=0)
+            spike_tops, fitted_spike_tops, spike_widths, spike_ampls = spike_detect(data[feed,sideband], lag=300, threshold=5, influence=0)
             data_clean = spike_replace(data[feed,sideband], spike_tops, spike_widths)   
 
             # Repeat for reversed data to detect remaining spikes
-            spike_tops, fitted_spike_tops, spike_widths = spike_detect(data_clean[::-1], lag=500, threshold=5, influence=0)
+            spike_tops, fitted_spike_tops, spike_widths, spike_ampls = spike_detect(data_clean[::-1], lag=500, threshold=5, influence=0)
             if len(fitted_spike_tops) > 0:     
                 fitted_spike_tops = [ len(data[feed, sideband])-x-1 for x in fitted_spike_tops]
                 spike_tops = [ len(data[feed, sideband])-x-1 for x in spike_tops]
-                fitted_spike_tops, spike_widths = zip(*sorted(zip(fitted_spike_tops, spike_widths)))
-                spike_tops = np.sort(spike_tops)
-                fitted_spike_tops = np.sort(fitted_spike_tops)
+                fitted_spike_tops, spike_tops, spike_widths, spike_ampls = zip(*sorted(zip(fitted_spike_tops, spike_tops, spike_widths, spike_ampls)))
 
             data_final = spike_replace(data_clean, fitted_spike_tops, spike_widths)
             data_final_full[feed, sideband, :] = data_final           
@@ -269,52 +277,25 @@ def remove_spikes(data):
 
 
 def remove_spikes_parallell(data):
-    spike_tops1, fitted_spike_tops, spike_widths = spike_detect(data, lag=300, threshold=5, influence=0)
-    data_clean, final_spikes1, final_widths1 = spike_replace(data, fitted_spike_tops, spike_widths)      
+    spike_tops1, fitted_spike_tops1, spike_widths1, spike_ampls1 = spike_detect(data, lag=300, threshold=5, influence=0)
+    data_clean = spike_replace(data, fitted_spike_tops1, spike_widths1)          
+
 
     # Repeat for reversed data to detect remaining spikes
-    spike_tops2, fitted_spike_tops, spike_widths = spike_detect(data_clean[::-1], lag=500, threshold=5, influence=0)
-    if len(fitted_spike_tops) > 0: 
-        fitted_spike_tops = [ len(data)-x-1 for x in fitted_spike_tops] 
+    spike_tops2, fitted_spike_tops2, spike_widths2, spike_ampls2 = spike_detect(data_clean[::-1], lag=500, threshold=5, influence=0)
+
+    if len(fitted_spike_tops2) > 0: 
+        fitted_spike_tops2 = [ len(data)-x-1 for x in fitted_spike_tops2] 
         spike_tops2 = [ len(data)-x-1 for x in spike_tops2]    
-        fitted_spike_tops, spike_tops2, spike_widths = zip(*sorted(zip(fitted_spike_tops, spike_tops2, spike_widths)))
+        fitted_spike_tops2, spike_tops2, spike_widths2, spike_ampls2 = zip(*sorted(zip(fitted_spike_tops2, spike_tops2, spike_widths2, spike_ampls2)))
+
+    data_final = spike_replace(data_clean, fitted_spike_tops2, spike_widths2)        
 
 
-    data_final, final_spikes2, final_widths2 = spike_replace(data_clean, fitted_spike_tops, spike_widths)        
-    all_spikes = final_spikes1 + final_spikes2
-    all_widths = final_widths1 + final_widths2
-    # all_spikes = spike_tops1 + list(spike_tops2)
+    all_spikes = spike_tops1 + list(spike_tops2)
+    all_widths = spike_widths1 + list(spike_widths2)
+    all_ampls = spike_ampls1 + list(spike_ampls2)
 
-    output_list = [all_spikes, all_widths, data_final]
+    output_list = [all_spikes, all_widths, all_ampls, data_final]
     return output_list
             
-
-def remove_spikes_write_to_file(data, obsid, subseq_start, mjd, mjd_start, num_Tsys_values):
-    """
-    Detects and removes spikes for each feed and sideband within data. 
-    """
-    data_final_full = np.zeros(np.shape(data))
-    for feed in range(np.shape(data)[0]): 
-        for sideband in range(np.shape(data)[1]):                                         
-            spike_tops, fitted_spike_tops, spike_widths = spike_detect(data[feed,sideband], lag=300, threshold=5, influence=0)
-            data_clean = spike_replace(data[feed,sideband], spike_tops, spike_widths)   
-
-            file_subseq = open('spike_list.txt', 'a')
-            for i in range(len(spike_tops)):
-                file_subseq.write('%d    %d    %d    %d    %f   %f\n' %(int(obsid), feed, sideband, spike_tops[i] + num_Tsys_values, mjd[subseq_start+spike_tops[i]], mjd_start))
-
-            # Repeat for reversed data to detect remaining spikes
-            spike_tops, fitted_spike_tops, spike_widths = spike_detect(data_clean[::-1], lag=500, threshold=5, influence=0)
-            if len(fitted_spike_tops) > 0:     
-                fitted_spike_tops = [ len(data[feed, sideband])-x-1 for x in fitted_spike_tops]
-                spike_tops = [ len(data[feed, sideband])-x-1 for x in spike_tops]
-                fitted_spike_tops, spike_widths = zip(*sorted(zip(fitted_spike_tops, spike_widths)))
-                spike_tops = np.sort(spike_tops)  
-            data_final = spike_replace(data_clean, fitted_spike_tops, spike_widths)
-            data_final_full[feed, sideband, :] = data_final           
-
-            for i in range(len(spike_tops)):
-                file_subseq.write('%d    %d    %d    %d    %f   %f\n' %(int(obsid), feed, sideband, spike_tops[i] + num_Tsys_values, mjd[subseq_start+spike_tops[i]], mjd_start))
-
-
-    return data_final_full
