@@ -118,10 +118,10 @@ def subsequencegen(filename, spikelist_filename):
             subseq_new[feed,sideband] = subseq_feed
 
             for i in range(len(spike_tops)):
-                if spike_widths[i] == 0 or spike_widths[i] >= 200:
+                if spike_widths[i] == 0 or spike_widths[i]*2 >= 200:
                     pass
                 else:
-                    file_subseq.write('%d        %d        %d        %.4f        %.4f       %d        %f       %f\n' %(int(obsid), feeds[feed], sideband+1, spike_widths[i], spike_ampls[i],  spike_tops[i] + subseq_length*(subseq_numb-1) + num_Tsys_values, mjd[spike_tops[i]+subseq_length*(subseq_numb-1)], MJD_start))
+                    file_subseq.write('%d        %d        %d        %.4f        %.4f       %d        %f       %f\n' %(int(obsid), feeds[feed], sideband+1, spike_widths[i]*2, spike_ampls[i],  spike_tops[i] + subseq_length*(subseq_numb-1) + num_Tsys_values, mjd[spike_tops[i]+subseq_length*(subseq_numb-1)], MJD_start))
         
         subseq = scale(subseq_new)
         sequences.append(subseq)

@@ -24,6 +24,36 @@ def scale(data):
 
     return new_data
 
+
+def scale_two_mean(data):
+    """
+    Scales and zero-center the data 
+    """
+    new_data = np.copy(data)
+    # Normalizing by dividing each feed on its own mean 
+    for feed in range(np.shape(data)[0]):
+        for sideband in range(np.shape(data)[1]):
+            if np.all(data[feed, sideband]==0):
+                continue
+            new_data[feed][sideband] = data[feed][sideband]/np.nanmean(data[feed][sideband])-1
+
+
+    # Mean over feeds and sidebands            
+    new_data = np.nanmean(new_data, axis=1)
+    new_data1 = np.nanmean(new_data[:int(np.shape(new_data)[0]/2)], axis=0)
+    new_data2 = np.nanmean(new_data[int(np.shape(new_data)[0]/2):], axis=0)
+
+    # Zero-center data 
+    new_data1 = new_data1 - np.mean(new_data1)
+    new_data2 = new_data2 - np.mean(new_data2)
+
+    new_data = np.vstack([new_data1, new_data2]).T
+
+    return new_data
+
+
+
+
 def elevation_azimuth_template(X, g, a, c, d, e):
     """
     Template for elevation gain and azimuth correlations.                    
@@ -200,7 +230,7 @@ def spike_detect(data, lag=5, threshold=10, influence=0):
     return spike_tops, fitted_spike_tops, spike_widths, spike_ampls
 
 
-def spike_replace(data, spike_tops, spike_widths):
+def spike_replace(data, spike_tops, spike_widths, plot=False):
     """
     Replaces the spikes in the data with noise.
     """
@@ -248,6 +278,9 @@ def spike_replace(data, spike_tops, spike_widths):
             noise = np.random.normal(y, std)                                                
             noise[0] = y1
             noise[-1] = y2
+            
+            if plot:
+                plt.plot(x, noise, 'r')
 
             new_data[x1:x2+1] = noise
 
@@ -276,9 +309,9 @@ def remove_spikes(data):
     return data_final_full
 
 
-def remove_spikes_parallell(data):
+def remove_spikes_parallell(data, plot=False):
     spike_tops1, fitted_spike_tops1, spike_widths1, spike_ampls1 = spike_detect(data, lag=300, threshold=5, influence=0)
-    data_clean = spike_replace(data, fitted_spike_tops1, spike_widths1)          
+    data_clean = spike_replace(data, fitted_spike_tops1, spike_widths1, plot)          
 
 
     # Repeat for reversed data to detect remaining spikes
@@ -289,7 +322,7 @@ def remove_spikes_parallell(data):
         spike_tops2 = [ len(data)-x-1 for x in spike_tops2]    
         fitted_spike_tops2, spike_tops2, spike_widths2, spike_ampls2 = zip(*sorted(zip(fitted_spike_tops2, spike_tops2, spike_widths2, spike_ampls2)))
 
-    data_final = spike_replace(data_clean, fitted_spike_tops2, spike_widths2)        
+    data_final = spike_replace(data_clean, fitted_spike_tops2, spike_widths2, plot)        
 
 
     all_spikes = spike_tops1 + list(spike_tops2)

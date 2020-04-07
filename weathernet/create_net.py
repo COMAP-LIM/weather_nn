@@ -46,16 +46,16 @@ def train_test_split(path_good, path_bad, n=False):
     # Read files                                                                        
     X_train, ps_train, indices_train, obsids_train = read_files(training_data)
     X_test, ps_test, indices_test, obsids_test = read_files(testing_data)
-
-
+    
     std = np.std(X_train)
     X_train = X_train/std
     X_test = X_test/std
 
     print('Standard deviation of training data:', std)
 
-    X_train = X_train.reshape(len(obsids_train), np.shape(X_train)[1],1)
-    X_test = X_test.reshape(len(obsids_test), np.shape(X_test)[1],1)
+    if len(np.shape(X_train)) < 3:
+        X_train = X_train.reshape(len(obsids_train), np.shape(X_train)[1],1)
+        X_test = X_test.reshape(len(obsids_test), np.shape(X_test)[1],1)
 
     print('Training samples: %d  (%.1f percent)' %(len(training_labels), 100*len(training_labels)/(len(training_labels) + len(testing_labels))))
     print('Testing samples: %d  (%.1f percent)' %(len(testing_labels), 100*len(testing_labels)/(len(training_labels) + len(testing_labels))))
@@ -110,8 +110,8 @@ def evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=False):
     #plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True) 
 
     if save_model:
-        model.save("weathernet_current.h5")
-        with open('weathernet_current_std.txt', 'w') as f:
+        model.save("weathernet_only_mean.h5")
+        with open('weathernet_only_mean_std.txt', 'w') as f:
             f.write(str(std))
         print("Saved model to disk")
 
@@ -171,7 +171,7 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
 
 
 if __name__ == '__main__':
-    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = train_test_split('data/good_test_update/', 'data/bad_test_update/')
+    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = train_test_split('data/training_data_preprocess/good_two_means/', 'data/training_data_preprocess/bad_two_means/')
     model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=False)
     #model = load_model('weathernet_current.h5')
-    analyse_classification_results(model, X_test, y_test, indices_test, obsids_test, plot=True)
+    analyse_classification_results(model, X_test, y_test, indices_test, obsids_test, plot=False)

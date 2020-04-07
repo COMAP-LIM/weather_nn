@@ -1,5 +1,5 @@
 import numpy as np 
-from preprocessing import scale, remove_elevation_azimuth_structures, remove_spikes
+from preprocessing import scale, remove_elevation_azimuth_structures, remove_spikes, scale_two_mean
 import os, glob, sys
 import h5py
 from functools import partial 
@@ -53,12 +53,13 @@ def read_file(output_folder, n, line):
     tod[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), tod[~mask])
 
     # Preprocessing
-    tod = remove_elevation_azimuth_structures(tod, el, az)    
-    tod = remove_spikes(tod)                                                                     
-    tod = scale(tod)
+    #tod = remove_elevation_azimuth_structures(tod, el, az)    
+    #tod = remove_spikes(tod)                                                                     
+    #tod = scale(tod)
+    tod = scale_two_mean(tod)
 
     # Calculating power spectrum  
-    ps = power_spectrum(tod)
+    ps = 0#power_spectrum(tod)
 
 
     for i in range(n):
@@ -75,13 +76,14 @@ def read_file(output_folder, n, line):
             hdf.create_dataset('index', data=index)
             hdf.create_dataset('obsid', data=obsid*10)
                 
+    
     # Write to file   
     with h5py.File(output_folder + filename[:-4] + '_%d.hd5' %subseq, 'w') as hdf:
         hdf.create_dataset('tod', data=tod)
         hdf.create_dataset('ps', data=ps)
         hdf.create_dataset('index', data=index)
         hdf.create_dataset('obsid', data=obsid)
-
+    
 
 
 def generate_data(data):
@@ -115,14 +117,14 @@ def power_spectrum(data):
     return ps_binned/ps_binned_2/1e6
 
 def create_dataset_parallel():
-    textfile_bad = open('data/bad_subsequences_ALL_updated.txt', 'r')
+    textfile_bad = open('data/training_data_preprocess/bad_subsequences_EQUAL.txt', 'r')
     lines_bad = textfile_bad.readlines()
 
-    textfile_good = open('data/good_subsequences_ALL_updated.txt', 'r')
+    textfile_good = open('data/training_data_preprocess/good_subsequences_EQUAL.txt', 'r')
     lines_good = textfile_good.readlines()
 
-    read_file_bad = partial(read_file, 'data/bad_test_update/', 5)
-    read_file_good = partial(read_file, 'data/good_test_update/', 0)
+    read_file_bad = partial(read_file, 'data/training_data_preprocess/bad_two_means/', 0)
+    read_file_good = partial(read_file, 'data/training_data_preprocess/good_two_means/', 0)
 
 
     with Pool() as pool:

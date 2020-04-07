@@ -1,6 +1,6 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
-from preprocessing import scale, remove_elevation_azimuth_structures, remove_spikes
+from preprocessing import scale, remove_elevation_azimuth_structures, remove_spikes_parallell, highpass_filter
 import h5py
 import julian
 import matplotlib
@@ -282,10 +282,132 @@ def plot_scaled(filename, subseq=False):
     plt.show()
 
 
+def plot_spike_detect(filename, subseq):
+    # Calculating subsequence length                            
+    fs = 50
+    T = 1/fs
+    subseq_length = int(10*60/T)
+
+    if subseq:
+        index1 = subseq_length*(subseq-1)
+        index2 = subseq_length*subseq
+    else:
+        filename = line.split()[0]
+        index1 = int(line.split()[1])
+        index2 = int(line.split()[2])
+        index = (index1, index2)
+        subseq = int(index2/30000)
+
+    tod, mjd, el, az, feeds, obsid = read_file(filename)
+
+    # Extracting subsequence 
+    tod       = tod[:,:,index1:index2]
+    el        = el[:,index1:index2]
+    az        = az[:,index1:index2]
+    mjd       = mjd[index1:index2]
+
+    time = []
+    for i in range(len(mjd)):
+        time.append(julian.from_jd(mjd[i], fmt='mjd'))
+
+    feed, sideband = (13,0)
+    tod_new = remove_elevation_azimuth_structures(tod, el, az) 
+    tod_new = tod_new[feed,sideband]
+    spikes, widths, ampls, tod_no_spikes = remove_spikes_parallell(tod_new)
+
+    for i in range(len(spikes)):
+        print(spikes[i], widths[i])
+
+
+
+    fig = plt.figure(figsize=(11,3))
+
+    plt.subplot(1,2,1)
+    plt.plot(tod_new, label=r'$d_{before}$')
+    plt.xlabel('Sample')
+    plt.ylabel('Power')
+    plt.grid()
+    plt.legend(prop={'size': 12})
+
+    
+    plt.subplot(1,2,2)
+    plt.plot(highpass_filter(tod_new), label=r'$d_{after}$')
+    plt.xlabel('Sample')
+    plt.ylabel('Power')
+    plt.grid()
+    plt.tight_layout()
+    plt.suptitle('ObsID: %s' %obsid, y=1.05)
+    plt.legend(prop={'size': 12})
+    plt.savefig('figures/%d_subseq_%d_%d_%d_highpassed.pdf' %(obsid, subseq, feed, sideband), bbox_inches = "tight")
+
+    plt.figure(figsize=(7,3))
+    plt.plot(tod_new)
+    plt.xlabel('Sample')
+    plt.ylabel('Power')
+    plt.grid()
+    plt.plot(spikes, tod_new[spikes], 'ro')
+    for i in range(len(spikes)):
+        x1 = spikes[i] - int(widths[i])
+        x2 = spikes[i] + int(widths[i])
+        plt.axvspan(x1, x2, alpha=0.5, color='red')
+    plt.title('ObsID: %s' %obsid)
+    #plt.savefig('figures/%d_subseq_%d_%d_%d_spikedetect.pdf' %(obsid, subseq, feed, sideband), bbox_inches = "tight")
+
+    lower_lim, upper_lim = (25, 50)
+    spike_nr = 3
+    plt.figure(figsize=(5,3))
+    plt.plot(tod_new[spikes[spike_nr]-lower_lim:spikes[spike_nr]+upper_lim])
+    plt.plot(lower_lim, tod_new[spikes[spike_nr]], 'ro')
+    x1 = lower_lim - int(widths[spike_nr])
+    x2 = lower_lim + int(widths[spike_nr])
+    plt.ylim(top=tod_new[spikes[spike_nr]]+500)
+    plt.axvspan(x1, x2, alpha=0.5, color='red')
+    plt.text(upper_lim-10, tod_new[spikes[spike_nr]] - 650, 'Width: %.2f \nAmplitude: %.2f'  %(widths[spike_nr], ampls[spike_nr]), fontsize = 12, bbox={'facecolor': '#b1cce1', 'alpha': 0.5, 'pad': 10})
+    plt.xlabel('Sample')
+    plt.ylabel('Power')
+    plt.grid()
+    plt.title('ObsID: %s' %obsid)
+    #plt.savefig('figures/%d_subseq_%d_%d_%d_spikedetect_zoom.pdf' %(obsid, subseq, feed, sideband), bbox_inches = "tight")
+    
+
+    plt.figure(figsize=(5,3))
+    plt.plot(tod_new[spikes[spike_nr]-lower_lim:spikes[spike_nr]+upper_lim], color=colors[0], label='Original data')
+    plt.plot(np.arange(21,28), tod_no_spikes[spikes[spike_nr]-lower_lim:spikes[spike_nr]+upper_lim][21:28], color='r', label='Replaced values', linewidth=2)
+    plt.xlabel('Sample')
+    plt.ylabel('Power')
+    plt.grid()
+    plt.title('ObsID: %s' %obsid)
+    plt.legend(prop={'size': 12})
+    #plt.savefig('figures/%d_subseq_%d_%d_%d_spikedetect_zoom_replaced.pdf' %(obsid, subseq, feed, sideband), bbox_inches = "tight")
+    
+
+
+    fig = plt.figure(figsize=(11,3))
+    plt.subplot(1,2,1)
+    plt.plot(tod_new, label=r'$d_{before}$')
+    plt.xlabel('Sample')
+    plt.ylabel('Power')
+    plt.grid()
+    plt.legend(prop={'size': 12})
+    plt.ylim(np.min(tod_new) - 1000, np.max(tod_new) + 1000)
+    
+    plt.subplot(1,2,2)
+    plt.plot(tod_no_spikes, label=r'$d_{after}$')
+    plt.xlabel('Sample')
+    plt.ylabel('Power')
+    plt.grid()
+    plt.tight_layout()
+    plt.suptitle('ObsID: %s' %obsid, y=1.05)
+    plt.legend(prop={'size': 12})
+    plt.ylim(np.min(tod_new) - 1000, np.max(tod_new) + 1000)
+    plt.savefig('figures/%d_subseq_%d_%d_%d_spikeremove.pdf' %(obsid, subseq, feed, sideband), bbox_inches = "tight")
+    plt.show()
+
     
 # 'comap-0010402-2020-01-10-225243.hd5', 'comap-0006801-2019-07-09-005158.hd5', 'comap-0006819-2019-07-10-230632.hd5'
-filenames = ['comap-0007343-2019-08-07-220019.hd5', 'comap-0007368-2019-08-09-041820.hd5',  'comap-0008210-2019-10-08-095538.hd5']
+filenames = ['comap-0007343-2019-08-07-220019.hd5', 'comap-0007368-2019-08-09-041820.hd5',  'comap-0008210-2019-10-08-095538.hd5', 'comap-0006557-2019-06-17-172637.hd5', 'comap-0006801-2019-07-09-005158.hd5', 'comap-0008551-2019-10-22-202402.hd5']
 #plot_whole_tod(filenames[0])
 #plot_subsequence(filenames[1], 1)
 #plot_az_el_removal(filenames[-1],1)
-plot_scaled(filenames[1],1)
+#plot_scaled(filenames[1],1)
+plot_spike_detect(filenames[-3], 3)
