@@ -11,10 +11,11 @@ from keras.layers.convolutional import Conv1D
 from keras import optimizers
 from keras.utils import to_categorical
 from sklearn.metrics import confusion_matrix
+from sklearn.metrics import recall_score
 from keras.models import load_model
 
-def train_test_split(path_good, path_bad, n=False):
-    random.seed(24)
+def train_test_split(path_good, path_bad, seed=24):
+    random.seed(seed)
 
     files_good = glob.glob(path_good + '*.hd5')
     files_bad = glob.glob(path_bad + '*.hd5')
@@ -59,8 +60,8 @@ def train_test_split(path_good, path_bad, n=False):
 
     print('Training samples: %d  (%.1f percent)' %(len(training_labels), 100*len(training_labels)/(len(training_labels) + len(testing_labels))))
     print('Testing samples: %d  (%.1f percent)' %(len(testing_labels), 100*len(testing_labels)/(len(training_labels) + len(testing_labels))))
-    print('Of the testing samples, %d is bad weather.' %np.sum(training_labels))
-    print('Of the training samples, %d is bad weather.' %np.sum(testing_labels))
+    print('Of the training samples, %d is bad weather.' %np.sum(training_labels))
+    print('Of the testing samples, %d is bad weather.' %np.sum(testing_labels))
 
 
     # Convert label array to one-hot encoding  
@@ -68,6 +69,7 @@ def train_test_split(path_good, path_bad, n=False):
     y_test = to_categorical(testing_labels, 2)
 
     return X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std
+
 
 
 def read_files(files):
@@ -170,8 +172,54 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
 
 
 
-if __name__ == '__main__':
-    X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = train_test_split('data/training_data_preprocess/good_two_means/', 'data/training_data_preprocess/bad_two_means/')
-    model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=False)
-    #model = load_model('weathernet_current.h5')
+def mean_accuracy(good_samples_folder, bad_samples_folder, runs=10):
+    test_accuracies = []
+    train_accuracies = []
+    recalls = []
+    for r in range(runs):
+        print('RUN:', r+1)
+        X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder, seed=r+1)
+        model, test_accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, std)
+        train_accuracy = history.history['accuracy'][-1]
+
+        predictions = model.predict(X_test)
+        y_pred = predictions.argmax(axis=-1)
+        y_true = y_test.argmax(axis=-1)        
+        recall = recall_score(y_true, y_pred)
+
+        test_accuracies.append(test_accuracy*100.0)
+        train_accuracies.append(train_accuracy*100.0)
+        recalls.append(recall)
+
+    m_test, std_test = np.mean(test_accuracies), np.std(test_accuracies)
+    m_train, std_train = np.mean(train_accuracies), np.std(train_accuracies)
+    m_recall, std_recall = np.mean(recalls), np.std(recalls)
+    
+    print(train_accuracies)
+    print(test_accuracies)
+    print(recalls)
+
+    print()
+    print('Train accuracy: %.3f\%% ($\pm$ %.3f)' % (m_train, std_train))
+    print('Test accuracy:  %.3f\%% ($\pm$ %.3f)' % (m_test, std_test))
+    print('Recall:         %.4f  ($\pm$ %.3f)' % (m_recall, std_recall))
+    print()
     analyse_classification_results(model, X_test, y_test, indices_test, obsids_test, plot=False)
+
+
+
+if __name__ == '__main__':
+    good_samples_folder = 'data/training_data_preprocess/all_feeds/good_more_good/'
+    bad_samples_folder = 'data/training_data_preprocess/all_feeds/bad_more_good/'
+
+    mean_accuracy(good_samples_folder, bad_samples_folder, runs=10)
+    print('All feeds - more good')
+
+
+
+
+
+    #X_train, y_train, ps_train, X_test, y_test, ps_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder)
+    #model, accuracy, history = evaluate_CNN(X_train, y_train, X_test, y_test, std, save_model=False)
+    #model = load_model('weathernet_current.h5')
+    #analyse_classification_results(model, X_test, y_test, indices_test, obsids_test, plot=False)

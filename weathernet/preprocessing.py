@@ -51,6 +51,28 @@ def scale_two_mean(data):
 
     return new_data
 
+def scale_all_feeds(data):
+    """
+    Scales and zero-center the data 
+    """
+    new_data = np.copy(data)
+    # Normalizing by dividing each feed on its own mean 
+    for feed in range(np.shape(data)[0]):
+        for sideband in range(np.shape(data)[1]):
+            if np.all(data[feed, sideband]==0):
+                continue
+            new_data[feed][sideband] = data[feed][sideband]/np.nanmean(data[feed][sideband])-1
+
+
+    # Mean over feeds and sidebands            
+    new_data = np.nanmean(new_data, axis=1)
+
+    # Chose first 18 feeds to get same dimensions of each sample
+    new_data = new_data[:16].T
+
+    return new_data
+
+
 
 
 
