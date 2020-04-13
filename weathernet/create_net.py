@@ -18,22 +18,42 @@ def train_test_split(path_good, path_bad, seed=24):
     random.seed(seed)
 
     files_good = glob.glob(path_good + '*.hd5')
-    files_bad = glob.glob(path_bad + '*.hd5')
+    files_bad_all = glob.glob(path_bad + '*.hd5')
     labels_good = [0] * len(files_good)
-    labels_bad = [1] * len(files_bad)
+    labels_bad = [1] * len(files_bad_all)
 
     random.shuffle(files_good)
-    random.shuffle(files_bad)
+    random.shuffle(files_bad_all)
+
+    # Ensure that generated data will not be a part of the testing data
+    files_bad_generated = []
+    files_bad_original = []
+    for i in range(len(files_bad_all)):
+        if len(files_bad_all[i]) < 92:
+            files_bad_original.append(files_bad_all[i])
+        else:
+            files_bad_generated.append(files_bad_all[i])
+
+    files_bad = files_bad_original + files_bad_generated
 
     # Do not want to use more than 25 % of the bad data as testing data                 
     n_test_samples = int(0.125*(len(files_good) + len(files_bad)))
     if n_test_samples > 0.25*len(files_bad):
         n_test_samples = int(0.25*len(files_bad))
 
+    print(len(files_bad_original))
+    print(n_test_samples)
+
+    sys.exit()
+    #for i in range(n_test_samples+1):
+    #    print(files_bad[i])
+
     testing_data = files_good[:n_test_samples] + files_bad[:n_test_samples]
     testing_labels = labels_good[:n_test_samples] + labels_bad[:n_test_samples]
     training_data = files_good[n_test_samples:] + files_bad[n_test_samples:]
     training_labels = labels_good[n_test_samples:] + labels_bad[n_test_samples:]
+
+
 
     # Shuffling the filenames and labels to the same order                              
     testing_set = list(zip(testing_data, testing_labels))
@@ -210,10 +230,10 @@ def mean_accuracy(good_samples_folder, bad_samples_folder, runs=10):
 
 if __name__ == '__main__':
     good_samples_folder = 'data/training_data_preprocess/all_feeds/good_more_good/'
-    bad_samples_folder = 'data/training_data_preprocess/all_feeds/bad_more_good/'
+    bad_samples_folder = 'data/training_data_preprocess/all_feeds/bad_generated/'
 
     mean_accuracy(good_samples_folder, bad_samples_folder, runs=10)
-    print('All feeds - more good')
+    print('All feeds - generated bad data')
 
 
 
