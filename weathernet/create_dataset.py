@@ -25,7 +25,16 @@ def read_file(output_folder, n, line):
         el        = np.array(hdf['spectrometer/pixel_pointing/pixel_el'])
         az        = np.array(hdf['spectrometer/pixel_pointing/pixel_az'])
         features  = np.array(hdf['spectrometer/features'])
-        
+        temp      = np.mean(np.array(hdf['hk/array/weather/airTemperature']))
+        dewpoint  = np.mean(np.array(hdf['hk/array/weather/dewPointTemp']))
+        pressure  = np.mean(np.array(hdf['hk/array/weather/pressure']))
+        rain      = np.mean(np.array(hdf['hk/array/weather/rainToday']))
+        humidity  = np.mean(np.array(hdf['hk/array/weather/relativeHumidity']))
+        status    = np.mean(np.array(hdf['hk/array/weather/status']))
+        winddeg   = np.mean(np.array(hdf['hk/array/weather/windDirection']))
+        windspeed = np.mean(np.array(hdf['hk/array/weather/windSpeed'])) 
+
+
     # Removing Tsys measurements                                                                   
     boolTsys = (features & 1 << 13 != 8192)
     indexTsys = np.where(boolTsys == False)[0]
@@ -54,13 +63,16 @@ def read_file(output_folder, n, line):
 
     # Preprocessing
     tod = remove_elevation_azimuth_structures(tod, el, az)    
-    #tod = remove_spikes(tod)                                                                     
+    #tod = remove_spikes(tod)                   
     #tod = scale(tod)
-    #tod = scale_two_mean(tod)
-    tod = scale_all_feeds(tod)
+    tod = scale_two_mean(tod)
+    #tod = scale_all_feeds(tod)
 
     # Calculating power spectrum  
-    ps = 0#power_spectrum(tod)
+    ps = power_spectrum(tod)
+
+    # Weatherdata
+    weatherdata = [temp, dewpoint, pressure, rain, humidity, status, winddeg, windspeed]
 
     
     for i in range(n):
@@ -72,14 +84,16 @@ def read_file(output_folder, n, line):
     
     
         # Calculating power spectrum for generated data  
-        simulated_ps = 0#power_spectrum(simulated_data)
+        simulated_ps = power_spectrum(simulated_data)
 
+    
         # Write generated data to file                                                         
         with h5py.File(output_folder + filename[:-4] + '_%d_simulated_%d.hd5' %(subseq,i), 'w') as hdf:
             hdf.create_dataset('tod', data=simulated_data)
             hdf.create_dataset('ps', data=simulated_ps)
             hdf.create_dataset('index', data=index)
             hdf.create_dataset('obsid', data=obsid*10)
+            hdf.create_dataset('weather', data=weatherdata)
                 
     
     # Write to file   
@@ -88,7 +102,7 @@ def read_file(output_folder, n, line):
         hdf.create_dataset('ps', data=ps)
         hdf.create_dataset('index', data=index)
         hdf.create_dataset('obsid', data=obsid)
-    
+        hdf.create_dataset('weather', data=weatherdata)
     
 
 def generate_data(data):
@@ -99,6 +113,13 @@ def generate_data(data):
     std = np.sqrt(ps)
     fourier_coeffs = np.sqrt(2)*(np.random.normal(loc=0, scale=std) + 1j*np.random.normal(loc=0, scale=std))
     new_data = np.fft.irfft(fourier_coeffs)
+
+    #plt.figure(figsize=(4,3))
+    #plt.plot(data)
+
+    #plt.figure(figsize=(4,3))
+    #plt.plot(new_data)
+    #plt.show()
 
     return new_data
 
@@ -175,35 +196,26 @@ def power_spectrum(data):
 
 
 def create_dataset_parallel():
-    textfile_bad = open('data/training_data_preprocess/bad_subsequences_ALL.txt', 'r')
-    lines_bad = textfile_bad.readlines()
+    textfile_bad = open('data/bad_subsequences_ALL.txt', 'r')
+    textfile_good = open('data/good_subsequences_ALL.txt', 'r')
 
-    textfile_good = open('data/training_data_preprocess/good_subsequences_ALL.txt', 'r')
-    lines_good = textfile_good.readlines()
+    lines_good = textfile_good.readlines()[:401]
+    lines_bad = textfile_bad.readlines()[:400]
 
-    read_file_bad = partial(read_file, 'data/training_data_preprocess/all_feeds/bad_generated/', 5)
-    read_file_good = partial(read_file, 'data/training_data_preprocess/all_feeds/good_more_good/', 0)
-
-
+    read_file_bad = partial(read_file, 'data/training_data_results/mixed/bad/', 0)
+    read_file_good = partial(read_file, 'data/training_data_results/mixed/good/', 0)
+    
+    #for i in range(len(lines_bad)):
+    #    read_file_bad(lines_bad[i])
+    
     with Pool() as pool:
         pool.map(read_file_bad, lines_bad)
     
-    #with Pool() as pool:
-    #    pool.map(read_file_good, lines_good)
+    with Pool() as pool:
+        pool.map(read_file_good, lines_good)
     
 
 if __name__ == '__main__':
-    """
-    textfile_bad = open('data/training_data_preprocess/bad_subsequences_ALL.txt', 'r')
-    lines_bad = textfile_bad.readlines()
-    
-    textfile_good = open('data/training_data_preprocess/good_subsequences_ALL.txt', 'r')
-    lines_good = textfile_good.readlines()
-
-    for j in range(30):
-        read_file('test/', 1, lines_good[j+2])
-    """
-    
     import time
     start_time = time.time()
     create_dataset_parallel()

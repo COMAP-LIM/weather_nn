@@ -5,7 +5,7 @@ import random
 
 #path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-04/'
 
-file1 = open('good.txt', 'r')
+file1 = open('../../weathernet/data/good_subsequences_ALL.txt', 'r')
 lines = file1.read().splitlines()
 
 #lines = []
@@ -13,9 +13,10 @@ lines = file1.read().splitlines()
 #    lines.append(random.choice(lines_g))
 
 
-for f in lines:
+for line in lines:
+    f =  filename = line.split()[0]
     month = f[14:21]
-    obsid = f[9:13]
+    obsid = int(f[7:13])
     path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/' + month + '/'
     with h5py.File(path + f, 'r') as hdf:
         try:
@@ -29,7 +30,7 @@ for f in lines:
             winddeg = np.mean(np.array(hdf['/hk/array/weather/windDirection']))
             #mjd = np.mean(np.array(hdf['/hk/array/weather/utc']))
 
-            file1 = open('good_weather_means.txt', 'a')
+            file1 = open('good_weather_means_new.txt', 'a')
             file1.write('%.2f   %.2f   %.2f   %.2f   %.2f   %.2f   %.2f   %.2f\n' %(temp, dewtemp, pressure, humidity, rain, status, windspeed, winddeg))
 
             print(obsid)

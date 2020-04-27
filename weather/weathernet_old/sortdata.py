@@ -81,12 +81,12 @@ fs = 50
 T = 1/fs 
 subseq_length = int(10*60/T)
 
-save_choices = {'g': 'data/good_subsequences_TESTING.txt', 'b': 'data/bad_subsequences_TESTING.txt'}
-path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2020-03/'
+save_choices = {'g': 'data/good_subsequences_TESTING2.txt', 'b': 'data/bad_subsequences_TESTING2.txt'}
+path = '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2020-02/'
 data_path = os.path.join(path, '*.hd5') 
 lines = glob.glob(data_path)                                                                           
 
-last_count = 13  #117
+last_count = 20  #117
 count = last_count
 
 for f in lines[last_count:]:

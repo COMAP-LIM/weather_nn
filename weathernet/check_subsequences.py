@@ -54,43 +54,33 @@ def read_file(line):
     tod = remove_elevation_azimuth_structures(tod, el, az)
     #tod = remove_spikes(tod)
 
+    """
     for i in range(np.shape(tod)[0]):
         plt.figure()
         plt.plot(tod[i,0])
         #plt.plot([20394,25283,25403], [tod[i,0][20394],tod[i,0][25283],tod[i,0][25403]], 'ro')
         plt.title('Feed: %d, Sideband: 0' %i) 
-        """
-        std_noise = np.std(tod[i,0][1:]-tod[i,0][:-1])/np.sqrt(2)
-        print(i, 0)
-        print('std:', std_noise)
-        print('25400:', (tod[i,0][25400]-np.mean(tod[i,0]))/std_noise, tod[i,0][25400])
-        print('20394:', (tod[i,0][20394]-np.mean(tod[i,0]))/std_noise, tod[i,0][20394])
-        print('25283:', (tod[i,0][25283]-np.mean(tod[i,0]))/std_noise, tod[i,0][25283])
-        print('25403:', (tod[i,0][25403]-np.mean(tod[i,0]))/std_noise, tod[i,0][25403])
-        """
         plt.show()
-
+    """
 
     plt.figure()
     for feed in range(np.shape(tod)[0]-1):
         for sideband in range(np.shape(tod)[1]):
             plt.plot(np.arange(index[0], index[1]), tod[feed,sideband])
     plt.title('Obsid: %d, subseq: %d' %(obsid, int(index[1]/30000)) )
-    #plt.savefig('figures_good_test/%d_%d_%d.png' %(obsid, index[0], index[1]))
-    plt.show()
+    plt.savefig('figures_bad_test/%d_%d_%d.png' %(obsid, index[0], index[1]))
+    #plt.show()
 
 
-textfile_bad = open('data/training_data/bad_subsequences_ALL.txt', 'r')
+textfile_bad = open('data/bad_subsequences_TESTING2.txt', 'r')
 lines_bad = textfile_bad.readlines()
 
-textfile_good = open('data/training_data/good_subsequences_ALL.txt', 'r')
+textfile_good = open('data/good_subsequences_TESTING.txt', 'r')
 lines_good = textfile_good.readlines()
 
 
-lines = ['comap-0006801-2019-07-09-005158.hd5   0   30000', 'comap-0006557-2019-06-17-172637.hd5  0  30000']
+#for line in lines_good:
+#    read_file(line)
 
-for line in lines:
-    read_file(line)
-
-#with Pool() as pool:
-#    pool.map(read_file, lines_good)
+with Pool() as pool:
+    pool.map(read_file, lines_bad)

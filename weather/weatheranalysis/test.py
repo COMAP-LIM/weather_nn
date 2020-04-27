@@ -1,23 +1,26 @@
 import numpy as np
 from scipy import stats
 
-temp_g = np.loadtxt('good_weather_means.txt', usecols=0)
-dewtemp_g = np.loadtxt('good_weather_means.txt', usecols=1)
-pressure_g = np.loadtxt('good_weather_means.txt', usecols=2)
-humidity_g = np.loadtxt('good_weather_means.txt', usecols=3)
-rain_g = np.loadtxt('good_weather_means.txt', usecols=4)
-status_g = np.loadtxt('good_weather_means.txt', usecols=5)
-windspeed_g = np.loadtxt('good_weather_means.txt', usecols=6)
-winddeg_g  = np.loadtxt('good_weather_means.txt', usecols=7)
+good_means_file = 'good_weather_means_new.txt' 
+bad_means_file = 'bad_weather_means_new.txt'
 
-temp_b = np.loadtxt('bad_weather_means.txt', usecols=0)
-dewtemp_b = np.loadtxt('bad_weather_means.txt', usecols=1)
-pressure_b = np.loadtxt('bad_weather_means.txt', usecols=2)
-humidity_b = np.loadtxt('bad_weather_means.txt', usecols=3)
-rain_b = np.loadtxt('bad_weather_means.txt', usecols=4)
-status_b = np.loadtxt('bad_weather_means.txt', usecols=5)
-windspeed_b = np.loadtxt('bad_weather_means.txt', usecols=6)
-winddeg_b  = np.loadtxt('bad_weather_means.txt', usecols=7)
+temp_g = np.loadtxt(good_means_file, usecols=0)
+dewtemp_g = np.loadtxt(good_means_file, usecols=1)
+pressure_g = np.loadtxt(good_means_file, usecols=2)
+humidity_g = np.loadtxt(good_means_file, usecols=3)
+rain_g = np.loadtxt(good_means_file, usecols=4)
+status_g = np.loadtxt(good_means_file, usecols=5)
+windspeed_g = np.loadtxt(good_means_file, usecols=6)
+winddeg_g  = np.loadtxt(good_means_file, usecols=7)
+
+temp_b = np.loadtxt(bad_means_file, usecols=0)
+dewtemp_b = np.loadtxt(bad_means_file, usecols=1)
+pressure_b = np.loadtxt(bad_means_file, usecols=2)
+humidity_b = np.loadtxt(bad_means_file, usecols=3)
+rain_b = np.loadtxt(bad_means_file, usecols=4)
+status_b = np.loadtxt(bad_means_file, usecols=5)
+windspeed_b = np.loadtxt(bad_means_file, usecols=6)
+winddeg_b  = np.loadtxt(bad_means_file, usecols=7)
 
 def test_statistic(x1, x2):
     n1 = len(x1)
