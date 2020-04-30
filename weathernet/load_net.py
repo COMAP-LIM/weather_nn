@@ -92,6 +92,8 @@ def subsequencegen(filename, spikelist_filename):
         # Preprocessing
         subseq = remove_elevation_azimuth_structures(subseq, subel, subaz)
 
+
+        # SPIKEDETECT
         print(subseq_numb)
 
         file_subseq = open(spikelist_filename, 'a')
@@ -123,13 +125,20 @@ def subsequencegen(filename, spikelist_filename):
                 else:
                     file_subseq.write('%d        %d        %d        %.4f        %.4f       %d        %f       %f\n' %(int(obsid), feeds[feed], sideband+1, spike_widths[i]*2, spike_ampls[i],  spike_tops[i] + subseq_length*(subseq_numb-1) + num_Tsys_values, mjd[spike_tops[i]+subseq_length*(subseq_numb-1)], MJD_start))
         
+        # SPIKEDETCT FERDIG
+
         subseq = scale(subseq_new)
         sequences.append(subseq)
 
     return np.array(sequences), MJD_start
 
 
-def update_databases(weatherlist_filename, spikelist_filename, weathernet):
+def find_spikes():
+
+
+
+
+def update_weatherlist(weatherlist_filename, spikelist_filename, weathernet):
     # Load model 
     std = np.loadtxt(weathernet[:-3] + '_std.txt')
     model = load_model(weathernet)
@@ -156,7 +165,7 @@ def update_databases(weatherlist_filename, spikelist_filename, weathernet):
         last_checked_index = -1 
 
     files = ['/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-06/comap-0006557-2019-06-17-172637.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5']
-    last_checked_index = 1
+    last_checked_index = 0
 
     s = 0
     for f in files[last_checked_index+1:]:
@@ -181,8 +190,64 @@ def update_databases(weatherlist_filename, spikelist_filename, weathernet):
 
 
 
-weatherlist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/weather_data/weather_list_obsid.txt'
-spikelist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/spike_data/spike_list.txt'
+def update_spikedetect(weatherlist_filename, spikelist_filename, weathernet):
+    # Load model 
+    std = np.loadtxt(weathernet[:-3] + '_std.txt')
+    model = load_model(weathernet)
+
+    # Make list with relevant folders
+    folders = glob.glob('/mn/stornext/d16/cmbco/comap/pathfinder/ovro/20*/')
+    for el in folders:
+        if len(el) > 53:
+            folders.remove(el)
+
+    # Make list with files
+    files = []
+    for el in folders:
+        files.extend(glob.glob('%s/*.hd5' %el))
+    files.sort()
+
+    # Check the last obsid written to file
+    if os.path.exists(weatherlist_filename):
+        last_checked_obsid = np.loadtxt(weatherlist_filename, dtype=int, usecols=(0))[-1]
+        last_checked = '%07d' %last_checked_obsid
+        last_checked_filename = [f for f in files if last_checked in f][0]
+        last_checked_index = files.index(last_checked_filename)
+    else:
+        last_checked_index = -1 
+
+    files = ['/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-06/comap-0006557-2019-06-17-172637.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5']
+    last_checked_index = 0
+
+    s = 0
+    for f in files[last_checked_index+1:]:
+        s+=1
+        obsid = f[59:66]
+
+        print(obsid)
+        sequences, MJD_start = subsequencegen(f, spikelist_filename)
+
+        if sequences is None:
+            print('Passing')
+            continue 
+
+        sequences = sequences/std
+        predictions = model.predict(sequences.reshape(np.shape(sequences)[0], np.shape(sequences)[1], 1)) 
+        file_subseq = open(weatherlist_filename, 'a')
+        for i in range(len(predictions)):
+            file_subseq.write('%d    %d    %.4f   %f\n' %(int(obsid), i+1, predictions[i][1], MJD_start))
+
+        file_obsid = open(weatherlist_filename, 'a')
+        file_obsid.write('%d    %.4f    %.4f   %f \n' %(int(obsid), max(predictions[:,1]), np.median(predictions[:,1]), MJD_start))
+
+
+
+
+weatherlist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/weather_data/weather_list_obsid_TEST.txt'
+spikelist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/spike_data/spike_list_TEST.txt'
 weathernet = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/saved_nets/weathernet_current.h5'
 
+import time
+start_time = time.time()
 update_databases(weatherlist_filename, spikelist_filename, weathernet)
+print("--- %s seconds ---" % (time.time() - start_time))

@@ -11,6 +11,7 @@ import julian
 from scipy.optimize import curve_fit
 import matplotlib
 import time 
+from CNN_weathernet import create_dataset
 
 def remove_elevation_gain(X, g, a, c, d, e):
     """
@@ -43,6 +44,10 @@ def preprocess_data(data, el, az, obsid):
     # Mean over feeds and sidebands           
     data = np.nanmean(data, axis=0)
     data = np.nanmean(data, axis=0)
+
+    # Removing NaNs   
+    mask = np.isnan(data)
+    data[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), data[~mask])
 
 
     # Calculating template for elevation gain and azimuth structue removal 
@@ -140,9 +145,8 @@ def subsequencegen(filename):
     return np.array(sequences), MJD_start
 
 
-
-# Load model
 model = load_model('weathernet_current.h5')
+
 
 # Make list with relevant folders
 folders = glob.glob('/mn/stornext/d16/cmbco/comap/pathfinder/ovro/20*/')
@@ -158,8 +162,8 @@ files.sort()
 
 
 
-if os.path.exists('weather_list_obsid_new.txt'):
-    last_checked_obsid = np.loadtxt('weather_list_obsid_new.txt', dtype=int, usecols=(0))[-1]
+if os.path.exists('weather_list_obsid.txt'):
+    last_checked_obsid = np.loadtxt('weather_list_obsid.txt', dtype=int, usecols=(0))[-1]
     last_checked = '%07d' %last_checked_obsid
     last_checked_filename = [f for f in files if last_checked in f][0]
     last_checked_index = files.index(last_checked_filename)
@@ -188,10 +192,11 @@ for f in files[last_checked_index+1:]:
     #    print(sequences)
     #    print(np.shape(sequences))
     #    predictions = model.predict(sequences.reshape(1, len(sequences), 1))
-    file_subseq = open('weather_list_new.txt', 'a')
+    file_subseq = open('weather_list.txt', 'a')
     for i in range(len(predictions)):
         file_subseq.write('%d    %d    %.4f   %f\n' %(int(obsid), i+1, predictions[i][1], MJD_start))
 
-    file_obsid = open('weather_list_obsid_new.txt', 'a')
+    file_obsid = open('weather_list_obsid.txt', 'a')
     file_obsid.write('%d    %.4f    %.4f   %f \n' %(int(obsid), max(predictions[:,1]), np.median(predictions[:,1]), MJD_start))
+
 

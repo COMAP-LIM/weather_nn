@@ -131,22 +131,22 @@ def read_files(files):
 def evaluate_CNN_new(X_train, y_train, X_test, y_test, std, params = False, save_model=False):
     if params == False:
         params = {'epochs': 150, 'batch_size': 256, 'patience': 20, 'lr': 1e-4, \
-                  'filters': 32, 'kernel_size': 6, 'activation': 'relu'} 
-        
+                  'filters': 32, 'kernel_size': 6, 'activation1': 'relu', 'activation2': 'relu', 'poolsize': 3} 
     n_timesteps, n_features, n_outputs = X_train.shape[1], X_train.shape[2], y_train.shape[1]
     adam = optimizers.Adam(lr=params['lr']) 
     es = EarlyStopping(monitor='val_loss', patience=params['patience'], restore_best_weights=True)
 
     model = Sequential()
-    model.add(Conv1D(filters=128, kernel_size=24, activation=params['activation'], input_shape=(n_timesteps,n_features)))
+    model.add(Conv1D(filters=128, kernel_size=24, activation=params['activation1'], input_shape=(n_timesteps,n_features)))
+    #model.add(Conv1D(filters=32, kernel_size=6, activation=params['activation1'], input_shape=(n_timesteps,n_features)))
     model.add(MaxPooling1D(pool_size = 3))
-    model.add(Conv1D(filters=params['filters'], kernel_size=params['kernel_size'], activation=params['activation']))
+    #model.add(Conv1D(filters=64, kernel_size=12, activation=params['activation2']))
+    model.add(Conv1D(filters=16, kernel_size=3, activation=params['activation2']))
     model.add(Flatten())
     model.add(Dense(n_outputs, activation='softmax'))
     model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
 
-    plot_model(model, to_file='default_architecture.pdf', show_shapes=False, show_layer_names=True) 
-    sys.exit()
+    #plot_model(model, to_file='default_architecture.pdf', show_shapes=False, show_layer_names=True) 
 
     # fit network                                    
     history1 = model.fit(X_train, y_train, epochs=2, batch_size=params['batch_size'],  verbose=1, validation_data=(X_test, y_test))
@@ -164,7 +164,7 @@ def evaluate_CNN_new(X_train, y_train, X_test, y_test, std, params = False, save
     y_true = y_test.argmax(axis=-1)        
     recall = recall_score(y_true, y_pred)
 
-    plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True) 
+    #plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True) 
 
     if save_model:
         model.save("saved_nets/weathernet_test.h5")
@@ -175,19 +175,43 @@ def evaluate_CNN_new(X_train, y_train, X_test, y_test, std, params = False, save
     return model, history, recall
 
 
+def results_parallel(seed):
+    good_samples_folder =  'data/training_data_results/two_means/el_az_good/'
+    bad_samples_folder = 'data/training_data_results/two_means/el_az_bad/' 
+
+    X_train, y_train, ps_train, weather_train, X_test, y_test, ps_test, weather_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder, seed=seed)
+    model, history, recall = evaluate_CNN_new(X_train, y_train, X_test, y_test, std, params)
+    
+    test_accuracy = history['val_accuracy'][-1]
+    train_accuracy = history['accuracy'][-1]
+    test_loss = history['val_loss'][-1]
+    train_loss = history['loss'][-1]
+
+    all_results = (test_accuracy*100, train_accuracy*100, test_loss, train_loss, recall)
+
+    return all_results
+
+
 def grid_search(good_samples_folder, bad_samples_folder, parameter1, parameter2):
-    activation = ['relu', 'tanh', 'sigmoid', 'linear']
-    lr = [1e-3, 1e-4, 1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6]
-    bs = [128, 256, 16, 32, 64, 128, 256, 512]
-    filters = [64,128]#[16, 32]#, 64, 128]
-    kernel_size = [3, 6, 9, 12, 24]
+    parameter1 = 'lr'
+    parameter2 = 'batch_size'
 
-    suggested_params = {'batch_size': bs, 'lr': lr, 'filters': filters, \
-                        'kernel_size': kernel_size, 'activation': activation}
+    activation1 = ['relu', 'tanh', 'sigmoid']
+    activation2 = ['relu', 'tanh', 'sigmoid']
+    lr = [1e-5] #[1e-2, 1e-3, 1e-4, 1e-5]
+    bs = [512]   #[64, 128, 256, 512]
+    filters = [16, 32, 64, 128, 256]
+    kernel_size = [3, 6, 9, 12, 24, 48]
+    poolsizes = [3, 6, 9, 12]
 
-    default_params = {'epochs': 150, 'batch_size': 256, 'patience': 20, 'lr': 1e-4, \
-                      'filters': 32, 'kernel_size': 6, 'activation': 'relu'} 
-    # 150
+    suggested_params = {'batch_size': bs, 'lr': lr, 'filters': filters, 'kernel_size': kernel_size,\
+                        'activation1': activation1, 'activation2': activation2, 'poolsize': poolsizes}
+
+    default_params = {'epochs': 1000, 'batch_size': 256, 'patience': 100, 'lr': 1e-4, \
+                      'filters': 32, 'kernel_size': 6, 'activation1': 'relu', \
+                      'activation2': 'relu', 'poolsize': 3} 
+
+
     all_test_accuracies = np.zeros((len(suggested_params[parameter1]), len(suggested_params[parameter2])))
     all_recall = np.zeros((len(suggested_params[parameter1]), len(suggested_params[parameter2])))
     all_train_accuracies = np.zeros((len(suggested_params[parameter1]), len(suggested_params[parameter2])))
@@ -226,58 +250,91 @@ def grid_search(good_samples_folder, bad_samples_folder, parameter1, parameter2)
                 train_losses.append(train_loss)
                 recalls.append(recall)
 
-            
-            #all_results = np.array(all_results)
-
             m_test = np.mean(test_accuracies)
             m_train = np.mean(train_accuracies)
             m_recall = np.mean(recalls)
             m_test_loss = np.mean(test_losses)
             m_train_loss = np.mean(train_losses)
-
+            
             all_test_accuracies[i,j] = m_test
             all_train_accuracies[i,j] = m_train
             all_test_loss[i,j] = m_test_loss
             all_train_loss[i,j] = m_train_loss
             all_recall[i,j] = m_recall
             
-
             results.append((p1, p2, m_train, m_test, m_train_loss, m_test_loss, m_recall))
 
 
-    np.save('figures/heatmaps/heatmap_test_accuracy_%s_%s_layer2_64_128.npy' %(parameter1, parameter2), all_test_accuracies) 
-    np.save('figures/heatmaps/heatmap_train_accuracy_%s_%s_layer2_64_128.npy' %(parameter1, parameter2), all_train_accuracies) 
-    np.save('figures/heatmaps/heatmap_test_loss_%s_%s_layer2_64_128.npy' %(parameter1, parameter2), all_test_loss) 
-    np.save('figures/heatmaps/heatmap_train_loss_%s_%s_layer2_64_128.npy' %(parameter1, parameter2), all_train_loss) 
-    np.save('figures/heatmaps/heatmap_recall_%s_%s_layer2_64_128.npy' %(parameter1, parameter2), all_recall) 
-
-
+    np.save('figures/heatmaps/separate_values/heatmap_test_accuracy_%s_%s_owl21.npy' %(parameter1, parameter2), all_test_accuracies) 
+    np.save('figures/heatmaps/separate_values/heatmap_train_accuracy_%s_%s_owl21.npy' %(parameter1, parameter2), all_train_accuracies) 
+    np.save('figures/heatmaps/separate_values/heatmap_test_loss_%s_%s_owl21.npy' %(parameter1, parameter2), all_test_loss) 
+    np.save('figures/heatmaps/separate_values/heatmap_train_loss_%s_%s_owl21.npy' %(parameter1, parameter2), all_train_loss) 
+    np.save('figures/heatmaps/separate_values/heatmap_recall_%s_%s_owl21.npy' %(parameter1, parameter2), all_recall) 
 
     for i in range(len(results)):
         print(results[i])
 
-    fig, ax = plt.subplots(figsize = (5, 5))
-    sns.heatmap(all_test_accuracies, annot=True, fmt=".2f", ax=ax,  cmap="YlGnBu")
-    ax.set_title("Validation accuracy")
-    ax.set_xlabel(parameter2)
-    ax.set_ylabel(parameter1)
-    ax.set_xticklabels(suggested_params[parameter2])
-    ax.set_yticklabels(suggested_params[parameter1])
-    bottom, top = ax.get_ylim()
-    ax.set_ylim(bottom + 0.5, top - 0.5)
-    plt.savefig('heatmap_accuracy_%s_%s.pdf' %(parameter1, parameter2))
-    
-    fig, ax = plt.subplots(figsize = (5, 5))
-    sns.heatmap(all_recall, annot=True, fmt=".2f", ax=ax,  cmap="YlGnBu")
-    ax.set_title("Recall")
-    ax.set_xlabel(parameter2)
-    ax.set_ylabel(parameter1)
-    ax.set_xticklabels(suggested_params[parameter2])
-    ax.set_yticklabels(suggested_params[parameter1])
-    bottom, top = ax.get_ylim()
-    ax.set_ylim(bottom + 0.5, top - 0.5)
-    plt.savefig('heatmap_recall_%s_%s.pdf' %(parameter1, parameter2))
-    
+
+    """
+    all_test_accuracies = np.zeros((len(suggested_params[parameter1])))
+    all_recall = np.zeros((len(suggested_params[parameter1])))
+    all_train_accuracies = np.zeros((len(suggested_params[parameter1])))
+    all_test_loss = np.zeros((len(suggested_params[parameter1])))
+    all_train_loss = np.zeros((len(suggested_params[parameter1])))
+
+    results = []
+    for i, p1 in enumerate(suggested_params[parameter1]):
+            print(p1) 
+            params = default_params.copy()
+            params[parameter1] = p1
+                    
+            test_accuracies = []
+            train_accuracies = []
+            train_losses = []
+            test_losses = []
+            recalls = []
+
+            for r in range(10):
+                print('RUN:', r)
+                print(p1)
+                X_train, y_train, ps_train, weather_train, X_test, y_test, ps_test, weather_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder, seed=r+1)
+                model, history, recall = evaluate_CNN_new(X_train, y_train, X_test, y_test, std, params)
+
+                test_accuracy = history['val_accuracy'][-1]
+                train_accuracy = history['accuracy'][-1]
+                test_loss = history['val_loss'][-1]
+                train_loss = history['loss'][-1]
+
+                test_accuracies.append(test_accuracy*100.0)
+                train_accuracies.append(train_accuracy*100.0)
+                test_losses.append(test_loss)
+                train_losses.append(train_loss)
+                recalls.append(recall)
+
+            m_test = np.mean(test_accuracies)
+            m_train = np.mean(train_accuracies)
+            m_recall = np.mean(recalls)
+            m_test_loss = np.mean(test_losses)
+            m_train_loss = np.mean(train_losses)
+            
+            all_test_accuracies[i] = m_test
+            all_train_accuracies[i] = m_train
+            all_test_loss[i] = m_test_loss
+            all_train_loss[i] = m_train_loss
+            all_recall[i] = m_recall
+            
+            results.append((p1, m_train, m_test, m_train_loss, m_test_loss, m_recall))
+
+
+    np.save('figures/heatmaps/separate_values/heatmap_test_accuracy_%s_beehive18.npy' %(parameter1), all_test_accuracies) 
+    np.save('figures/heatmaps/separate_values/heatmap_train_accuracy_%s_beehive18.npy' %(parameter1), all_train_accuracies) 
+    np.save('figures/heatmaps/separate_values/heatmap_test_loss_%s_beehive18.npy' %(parameter1), all_test_loss) 
+    np.save('figures/heatmaps/separate_values/heatmap_train_loss_%s_beehive18.npy' %(parameter1), all_train_loss) 
+    np.save('figures/heatmaps/separate_values/heatmap_recall_%s_beehive18.npy' %(parameter1), all_recall) 
+
+    """
+
+
 
 def evaluate_NN_weather(X_train, y_train, X_test, y_test, save_model=False):
     verbose, epochs, patience, batch_size = 1, 1500, 20, 128
@@ -314,15 +371,15 @@ def evaluate_NN_weather(X_train, y_train, X_test, y_test, save_model=False):
     return model, history, recall
 
 def evaluate_NN_ps(X_train, y_train, X_test, y_test, save_model=False):
-    verbose, epochs, patience, batch_size = 1, 1500, 20, 256
+    verbose, epochs, patience, batch_size = 1, 3000, 20, 128
     n_timesteps, n_outputs, n_features = X_train.shape[2], y_train.shape[1], X_train.shape[1]
     adam = optimizers.Adam(lr=1e-3)  
     es = EarlyStopping(monitor='val_loss', patience=patience, restore_best_weights=True)
 
     model = Sequential()
     model.add(Flatten())
-    model.add(Dense(24, activation='relu'))
-    model.add(Dense(12, activation='relu'))
+    model.add(Dense(64, activation='relu'))
+    model.add(Dense(32, activation='relu'))
     model.add(Dense(n_outputs, activation='softmax'))
     model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
 
@@ -608,14 +665,15 @@ if __name__ == '__main__':
     #good_samples_folder =  'data/training_data_results/mixed/good/'
     #bad_samples_folder = 'data/training_data_results/mixed/bad/' 
 
-    #mean_accuracy(good_samples_folder, bad_samples_folder, runs=10)#, ps=True)
+    mean_accuracy(good_samples_folder, bad_samples_folder, runs=10) #, mixed_ps=True)
     #print('Two means, el az')
 
 
-    X_train, y_train, ps_train, weather_train, X_test, y_test, ps_test, weather_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder, seed=2)
+    #X_train, y_train, ps_train, weather_train, X_test, y_test, ps_test, weather_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder, seed=2)
     #model, accuracy, history = evaluate_NN_ps(ps_train, y_train, ps_test, y_test, save_model=True)
+    
     #model, history = evaluate_NN_weather(weather_train, y_train, weather_test, y_test, save_model=True)
-    model, history, recall = evaluate_CNN_new(X_train, y_train, X_test, y_test, std, save_model=False)
+    #model, history, recall = evaluate_CNN_new(X_train, y_train, X_test, y_test, std, save_model=False)
     #acc = evaluate_mixed(X_train, weather_train, y_train, X_test, weather_test, y_test)
     #print(history['accuracy'][-1], history['val_accuracy'][-1], history['loss'][-1], history['val_loss'][-1])
 
