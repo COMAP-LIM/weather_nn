@@ -15,7 +15,7 @@ def read_file(output_folder, n, line):
     index1 = int(line.split()[1])
     index2 = int(line.split()[2])
     month = filename[14:21]
-    obsid = int(filename[9:13])
+    obsid = int(filename[6:13])
     index = (index1, index2)
     subseq = int(index2/30000)
 
@@ -57,9 +57,13 @@ def read_file(output_folder, n, line):
         for sideband in range(np.shape(tod)[1]):
             if np.isnan(tod[feed, sideband]).all():
                 tod[feed,sideband] = 0
+            
+            mask = np.isnan(tod[feed, sideband])            
+            if np.isnan(tod[feed, sideband,-1]):
+                tod[feed, sideband, -1] = tod[feed, sideband, ~mask][-1]
 
-    mask = np.isnan(tod)
-    tod[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), tod[~mask])
+            tod[feed, sideband, mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), tod[feed, sideband,~mask])
+
 
     # Preprocessing
     tod = remove_elevation_azimuth_structures(tod, el, az)    
@@ -67,8 +71,8 @@ def read_file(output_folder, n, line):
     #tod = scale(tod)
     tod = scale_two_mean(tod)
     #tod = scale_all_feeds(tod)
-
     # Calculating power spectrum  
+
     ps = power_spectrum(tod)
 
     # Weatherdata
@@ -104,6 +108,7 @@ def read_file(output_folder, n, line):
         hdf.create_dataset('obsid', data=obsid)
         hdf.create_dataset('weather', data=weatherdata)
     
+
 
 def generate_data(data):
     """    
@@ -199,14 +204,14 @@ def create_dataset_parallel():
     textfile_bad = open('data/bad_subsequences_ALL.txt', 'r')
     textfile_good = open('data/good_subsequences_ALL.txt', 'r')
 
-    lines_good = textfile_good.readlines()[:401]
+    lines_good = textfile_good.readlines()[:400]
     lines_bad = textfile_bad.readlines()[:400]
 
-    read_file_bad = partial(read_file, 'data/training_data_results/mixed/bad/', 0)
-    read_file_good = partial(read_file, 'data/training_data_results/mixed/good/', 0)
-    
-    #for i in range(len(lines_bad)):
-    #    read_file_bad(lines_bad[i])
+    read_file_bad = partial(read_file, 'data/training_data_results/two_means/el_az_bad_new/', 0)
+    read_file_good = partial(read_file, 'data/training_data_results/two_means/el_az_good_new/', 0)
+        
+    #for line in lines_bad[73:]:
+    #    read_file_bad(line)
     
     with Pool() as pool:
         pool.map(read_file_bad, lines_bad)
@@ -220,5 +225,4 @@ if __name__ == '__main__':
     start_time = time.time()
     create_dataset_parallel()
     print("--- %s seconds ---" % (time.time() - start_time))
-    
-    
+

@@ -12,7 +12,7 @@ from multiprocessing import Pool
 from preprocessing import scale, remove_elevation_azimuth_structures, remove_spikes_parallell
 import sys
 
-def subsequencegen(filename, spikelist_filename):
+def subsequencegen(filename, spikelist_filename, spikes=False):
     obsid = int(filename[59:66])
 
     # Calculating subsequence length 
@@ -92,53 +92,48 @@ def subsequencegen(filename, spikelist_filename):
         # Preprocessing
         subseq = remove_elevation_azimuth_structures(subseq, subel, subaz)
 
+        # Find spikes and write spike data to file
+        if spikes == True:
+            find_spikes(subseq, spikelist_filename, obsid, mjd, MJD_start, feeds, subseq_length, num_Tsys_values, subseq_numb)
 
-        # SPIKEDETECT
-        print(subseq_numb)
-
-        file_subseq = open(spikelist_filename, 'a')
-        header = 'obsid     feed   sideband     width          ampl        index            mjd            mjd_start \n'
-    
-        if os.stat(spikelist_filename).st_size == 0:
-            file_subseq.write(header)
-
-        all_feeds = []
-        feed_nummeration = []
-        for feed in range(np.shape(subseq)[0]):
-            for sideband in range(np.shape(subseq)[1]):
-                all_feeds.append(subseq[feed][sideband])
-                feed_nummeration.append((feed,sideband))
-                
-        with Pool() as pool:
-            spike_list = pool.map(remove_spikes_parallell, all_feeds)
-        
-
-        subseq_new = np.zeros(np.shape(subseq))
-        for j in range(len(all_feeds)):
-            feed, sideband = feed_nummeration[j]
-            spike_tops, spike_widths, spike_ampls, subseq_feed = spike_list[j]
-            subseq_new[feed,sideband] = subseq_feed
-
-            for i in range(len(spike_tops)):
-                if spike_widths[i] == 0 or spike_widths[i]*2 >= 200:
-                    pass
-                else:
-                    file_subseq.write('%d        %d        %d        %.4f        %.4f       %d        %f       %f\n' %(int(obsid), feeds[feed], sideband+1, spike_widths[i]*2, spike_ampls[i],  spike_tops[i] + subseq_length*(subseq_numb-1) + num_Tsys_values, mjd[spike_tops[i]+subseq_length*(subseq_numb-1)], MJD_start))
-        
-        # SPIKEDETCT FERDIG
-
-        subseq = scale(subseq_new)
+        subseq = scale(subseq)
         sequences.append(subseq)
 
     return np.array(sequences), MJD_start
 
 
-def find_spikes():
+def find_spikes(subseq, spikelist_filename, obsid, mjd, MJD_start, feeds, subseq_length, num_Tsys_values, subseq_numb):
+    file_subseq = open(spikelist_filename, 'a')
+    header = 'obsid     feed   sideband     width          ampl        index            mjd            mjd_start \n'
+    
+    if os.stat(spikelist_filename).st_size == 0:
+        file_subseq.write(header)
+
+    all_feeds = []
+    feed_nummeration = []
+    for feed in range(np.shape(subseq)[0]):
+        for sideband in range(np.shape(subseq)[1]):
+            all_feeds.append(subseq[feed][sideband])
+            feed_nummeration.append((feed,sideband))
+                
+    with Pool() as pool:
+        spike_list = pool.map(remove_spikes_parallell, all_feeds)
+        
+
+    subseq_new = np.zeros(np.shape(subseq))
+    for j in range(len(all_feeds)):
+        feed, sideband = feed_nummeration[j]
+        spike_tops, spike_widths, spike_ampls, subseq_feed = spike_list[j]
+        subseq_new[feed,sideband] = subseq_feed
+
+        for i in range(len(spike_tops)):
+            if spike_widths[i] == 0 or spike_widths[i]*2 >= 200:
+                pass
+            else:
+                file_subseq.write('%d        %d        %d        %.4f        %.4f       %d        %f       %f\n' %(int(obsid), feeds[feed], sideband+1, spike_widths[i]*2, spike_ampls[i],  spike_tops[i] + subseq_length*(subseq_numb-1) + num_Tsys_values, mjd[spike_tops[i]+subseq_length*(subseq_numb-1)], MJD_start))
 
 
-
-
-def update_weatherlist(weatherlist_filename, spikelist_filename, weathernet):
+def update_weather_and_spike_list(weatherlist_filename, spikelist_filename, weathernet):
     # Load model 
     std = np.loadtxt(weathernet[:-3] + '_std.txt')
     model = load_model(weathernet)
@@ -164,16 +159,13 @@ def update_weatherlist(weatherlist_filename, spikelist_filename, weathernet):
     else:
         last_checked_index = -1 
 
-    files = ['/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-06/comap-0006557-2019-06-17-172637.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5']
-    last_checked_index = 0
-
     s = 0
     for f in files[last_checked_index+1:]:
         s+=1
         obsid = f[59:66]
 
         print(obsid)
-        sequences, MJD_start = subsequencegen(f, spikelist_filename)
+        sequences, MJD_start = subsequencegen(f, spikelist_filename, spikes=True)
 
         if sequences is None:
             print('Passing')
@@ -190,7 +182,45 @@ def update_weatherlist(weatherlist_filename, spikelist_filename, weathernet):
 
 
 
-def update_spikedetect(weatherlist_filename, spikelist_filename, weathernet):
+def update_spike_list_only(spikelist_filename):
+    # Load model 
+    std = np.loadtxt(weathernet[:-3] + '_std.txt')
+    model = load_model(weathernet)
+
+    # Make list with relevant folders
+    folders = glob.glob('/mn/stornext/d16/cmbco/comap/pathfinder/ovro/20*/')
+    for el in folders:
+        if len(el) > 53:
+            folders.remove(el)
+
+    # Make list with files
+    files = []
+    for el in folders:
+        files.extend(glob.glob('%s/*.hd5' %el))
+    files.sort()
+
+    # Check the last obsid written to file
+    if os.path.exists(weatherlist_filename):
+        last_checked_obsid = np.loadtxt(spikelist_filename, dtype=int, usecols=(0), skiprows=1)[-1]
+        last_checked = '%07d' %last_checked_obsid
+        last_checked_filename = [f for f in files if last_checked in f][0]
+        last_checked_index = files.index(last_checked_filename)
+    else:
+        last_checked_index = -1 
+
+    #files = ['/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-06/comap-0006557-2019-06-17-172637.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5']
+    #last_checked_index = 0
+
+    s = 0
+    for f in files[last_checked_index+1:]:
+        s+=1
+        obsid = f[59:66]
+
+        print(obsid)
+        sequences, MJD_start = subsequencegen(f, spikelist_filename, spikes=True)
+
+
+def update_weather_list_only(weatherlist_filename, weathernet):
     # Load model 
     std = np.loadtxt(weathernet[:-3] + '_std.txt')
     model = load_model(weathernet)
@@ -216,16 +246,13 @@ def update_spikedetect(weatherlist_filename, spikelist_filename, weathernet):
     else:
         last_checked_index = -1 
 
-    files = ['/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-06/comap-0006557-2019-06-17-172637.hd5', '/mn/stornext/d16/cmbco/comap/pathfinder/ovro/2019-07/comap-0006801-2019-07-09-005158.hd5']
-    last_checked_index = 0
-
     s = 0
     for f in files[last_checked_index+1:]:
         s+=1
         obsid = f[59:66]
 
         print(obsid)
-        sequences, MJD_start = subsequencegen(f, spikelist_filename)
+        sequences, MJD_start = subsequencegen(f, None, spikes=False)
 
         if sequences is None:
             print('Passing')
@@ -249,5 +276,9 @@ weathernet = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/saved_nets
 
 import time
 start_time = time.time()
-update_databases(weatherlist_filename, spikelist_filename, weathernet)
+
+#update_weather_list_only(weatherlist_filename, weathernet)
+update_spike_list_only(spikelist_filename)
+#update_weather_and_spike_list(weatherlist_filename, spikelist_filename, weathernet)
+
 print("--- %s seconds ---" % (time.time() - start_time))

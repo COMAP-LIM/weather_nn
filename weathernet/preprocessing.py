@@ -1,6 +1,7 @@
 import numpy as np 
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+from scipy import interpolate
 
 def scale(data):
     """
@@ -36,7 +37,6 @@ def scale_two_mean(data):
             if np.all(data[feed, sideband]==0):
                 continue
             new_data[feed][sideband] = data[feed][sideband]/np.nanmean(data[feed][sideband])-1
-
 
     # Mean over feeds and sidebands            
     new_data = np.nanmean(new_data, axis=1)
@@ -202,8 +202,11 @@ def spike_detect(data, lag=5, threshold=10, influence=0):
 
     # Find all data points detected as spikes 
     for i in range(lag, len(data)):
-        if (data_highpass[i] - average[i-1]) > threshold*std[i-1]:
+        if data_highpass[i] - average[i-1] > threshold*std[i-1]:
             signal[i] = 1
+            data_filtered[i] = influence*data_highpass[i] + (1-influence)*data_filtered[i-1]
+        elif data_highpass[i] - average[i-1] < - threshold*std[i-1]:
+            signal[i] = -1
             data_filtered[i] = influence*data_highpass[i] + (1-influence)*data_filtered[i-1]
         else:
             signal[i] = 0
@@ -224,23 +227,33 @@ def spike_detect(data, lag=5, threshold=10, influence=0):
     spike_tops = []
     if len(spike_indices[0])>0:
         for i in range(len(spike_indices)):
-            spike_tops.append(spike_indices[i][np.argmax(abs(data[spike_indices[i]]))])
-            
+            if signal[spike_indices[i][0]] == 1:
+                spike_tops.append(spike_indices[i][np.argmax(abs(data[spike_indices[i]]))])
+            elif signal[spike_indices[i][0]] == -1:
+                spike_tops.append(spike_indices[i][np.argmin(abs(data[spike_indices[i]]))])
+
     # Estimate the width of each spike and calculate signal to noise
     spike_widths = []
     fitted_spike_tops = []
     spike_ampls = []
     std_noise = np.std(data[1:]-data[:-1])/np.sqrt(2)
     for j in range(len(spike_tops)):
-        n = 100
-        subseq = data[spike_tops[j]-n:spike_tops[j]+n]
-        x = np.arange(len(subseq))
+        n_original = 100
+        subseq_old = data[spike_tops[j]-n_original:spike_tops[j]+n_original]
+        subseq_highpass = data_highpass[spike_tops[j]-n_original:spike_tops[j]+n_original]
+        x_old = np.arange(len(subseq_old))
+        n = 1000
+        f = interpolate.interp1d(x_old, subseq_old)
+        x = np.linspace(x_old[0],x_old[-1], n*2)
+        subseq = f(x)
+
         try:
-            popt, pcov = curve_fit(gaussian, (x, np.ones(len(subseq))*subseq[n]), subseq, bounds=((n-3,-1e10, 0),(n+3,1e10, 2*n)))
+            popt, pcov = curve_fit(gaussian, (x, np.ones(len(subseq))*subseq[n]), subseq, bounds=((n_original-3, -1e10, 0),(n_original+3, 1e10, 2*n_original)))
             fitted = gaussian((x, subseq[n]), *popt)
-            half_width = popt[-1]*3 # 3 standard deviations from the spike top in each direction 
+            half_width = popt[-1]*2 # 3 standard deviations from the spike top in each direction
             fitted_spike_tops.append(spike_tops[j]-100+popt[0])
-            spike_ampls.append((subseq[n] - popt[1])/std_noise)
+            #spike_ampls.append((subseq[n] - popt[1])/std_noise)
+            spike_ampls.append((data_highpass[spike_tops[j]] - average[spike_tops[j]-1])/std[spike_tops[j]-1])
         except:
             # Skip spike, could not find optimal values
             half_width = 0
@@ -297,14 +310,19 @@ def spike_replace(data, spike_tops, spike_widths, plot=False):
             y = m*x + b
 
             std = np.std(data[1:]-data[:-1])/np.sqrt(2)            
-            noise = np.random.normal(y, std)                                                
-            noise[0] = y1
-            noise[-1] = y2
-            
-            if plot:
-                plt.plot(x, noise, 'r')
+            noise = np.random.normal(y, std)
 
-            new_data[x1:x2+1] = noise
+            try:
+                noise[0] = y1
+                noise[-1] = y2
+            
+                if plot:
+                    plt.plot(x, noise, 'r')
+
+                new_data[x1:x2+1] = noise
+                
+            except:
+                pass
 
     return new_data
 

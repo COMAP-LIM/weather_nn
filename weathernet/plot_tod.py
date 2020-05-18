@@ -1,6 +1,6 @@
 import numpy as np 
 import matplotlib.pyplot as plt 
-from preprocessing import scale, remove_elevation_azimuth_structures, remove_spikes_parallell, highpass_filter
+from preprocessing import scale, scale_two_mean, remove_elevation_azimuth_structures, remove_spikes_parallell, highpass_filter
 import h5py
 import julian
 import matplotlib
@@ -13,7 +13,7 @@ matplotlib.rc('font', **font)
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 colors = colors + colors
 
-def read_file(filename):
+def read_file(filename, keepTsys=False):
     month = filename[14:21]
     obsid = int(filename[7:13])
 
@@ -41,19 +41,22 @@ def read_file(filename):
         boolTsys[:np.min(indexTsys)] = False
         boolTsys[np.max(indexTsys):] = False
 
-    tod       = tod[:,:,boolTsys]
-    el        = el[:,boolTsys]
-    az        = az[:,boolTsys]
-    mjd       = mjd[boolTsys]
+    if keepTsys:
+        tod[:,:,np.invert(boolTsys)] = np.nanmean(tod)
+    else:
+        tod       = tod[:,:,boolTsys]
+        el        = el[:,boolTsys]
+        az        = az[:,boolTsys]
+        mjd       = mjd[boolTsys]
     
     # Removing NaNs          
-    for feed in range(np.shape(tod)[0]):
-        for sideband in range(np.shape(tod)[1]):
-            if np.isnan(tod[feed, sideband]).all():
-                tod[feed,sideband] = 0
+    #for feed in range(np.shape(tod)[0]):
+    #    for sideband in range(np.shape(tod)[1]):
+    #        if np.isnan(tod[feed, sideband]).all():
+    #            tod[feed,sideband] = 0
 
-    mask = np.isnan(tod)
-    tod[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), tod[~mask])
+    #mask = np.isnan(tod)
+    #tod[mask] = np.interp(np.flatnonzero(mask), np.flatnonzero(~mask), tod[~mask])
 
     
     return tod, mjd, el, az, feeds, obsid
@@ -86,6 +89,7 @@ def plot_whole_tod(filename):
     plt.show()
     """
 
+    print(tod[-1,3,:])
 
     tod_new = tod #np.nanmean(tod, axis=1)
     max_y = np.max(tod_new[:-1])*1.15  
@@ -96,7 +100,7 @@ def plot_whole_tod(filename):
     hours = matplotlib.dates.MinuteLocator(interval = 10)
     h_fmt = matplotlib.dates.DateFormatter('%H:%M:%S')
                           
-    for feed in range(np.shape(tod_new)[0]-1):
+    for feed in range(np.shape(tod_new)[0]):
         for sideband in range(np.shape(tod_new)[1]):
             if np.sum(tod_new[feed,sideband]) == 0:
                 continue
@@ -115,11 +119,43 @@ def plot_whole_tod(filename):
                                                                                                  
     plt.xlabel('UTC (hours)')
     plt.ylabel('Power')
-    plt.ylim(min_y,max_y)
+    #plt.ylim(min_y,max_y)
     fig.autofmt_xdate()
     #plt.tight_layout()                                                                                     
     plt.title('ObsID: %s' %obsid)
-    plt.savefig('figures/%d_whole_tod.pdf' %obsid, bbox_inches = "tight")
+    #plt.savefig('figures/%d_whole_tod.pdf' %obsid, bbox_inches = "tight")
+    plt.show()
+
+def plot_feed(filename, feed, sideband):
+    # Calculating subsequence length 
+    fs = 50
+    T = 1/fs
+    subseq_length = int(10*60/T)
+
+    tod, mjd, el, az, feeds, obsid = read_file(filename, keepTsys=True)
+    
+    time = []
+    for i in range(len(mjd)):
+        time.append(julian.from_jd(mjd[i], fmt='mjd'))
+
+
+    tod_new = tod
+
+    fig = plt.figure(figsize=(6,3))
+    ax = fig.add_subplot(111)
+    #hours = matplotlib.dates.MinuteLocator(interval = 10)
+    #h_fmt = matplotlib.dates.DateFormatter('%H:%M:%S')
+    
+    plt.plot(tod_new[feed,sideband], linewidth=0.8)
+    #ax.xaxis.set_major_locator(hours)
+    #ax.xaxis.set_major_formatter(h_fmt)
+                                                                                                 
+    #plt.xlabel('UTC (hours)')
+    plt.ylabel('Power')
+    #plt.ylim(min_y,max_y)
+    #fig.autofmt_xdate()
+    #plt.tight_layout()                                                                                     
+    plt.title('ObsID: %s' %obsid)
     plt.show()
 
     
@@ -154,11 +190,10 @@ def plot_subsequence(filename, subseq=False):
     for i in range(len(mjd)):
         time.append(julian.from_jd(mjd[i], fmt='mjd'))
 
-
-    tod_new = tod
-
-    fig = plt.figure(figsize=(5,4))
-    ax = fig.add_subplot(111)
+    #tod_new = tod
+    fig = plt.figure(figsize=(10,4))
+    #plt.subplot(121)
+    ax = fig.add_subplot(121)
     hours = matplotlib.dates.MinuteLocator(interval = 2)
     h_fmt = matplotlib.dates.DateFormatter('%H:%M:%S')
                           
@@ -176,9 +211,9 @@ def plot_subsequence(filename, subseq=False):
     plt.ylabel('Power')
     fig.autofmt_xdate()
     plt.grid()
-    plt.title('ObsID: %s' %obsid)
-    plt.savefig('figures/%d_subseq_%d_scaled.pdf' %(obsid, subseq), bbox_inches = "tight")
-    plt.show()
+    #plt.title('ObsID: %s' %obsid)
+    #plt.savefig('figures/%d_subseq_%d_scaled.pdf' %(obsid, subseq), bbox_inches = "tight")
+    #plt.show()
 
 
 def plot_az_el_removal(filename, subseq=False):
@@ -269,7 +304,7 @@ def plot_scaled(filename, subseq=False):
     
 
     tod_new = remove_elevation_azimuth_structures(tod, el, az) 
-    tod_new = scale(tod_new)
+    tod_new = scale_two_mean(tod_new)
 
     fig = plt.figure(figsize=(5,4))
     plt.plot(tod_new)
@@ -278,7 +313,7 @@ def plot_scaled(filename, subseq=False):
     plt.ylim(-0.1,0.1)
     plt.grid()
     plt.title('ObsID: %s' %obsid)
-    plt.savefig('figures/%d_subseq_%d_scaled_same_y.pdf' %(obsid, subseq), bbox_inches = "tight")
+    #plt.savefig('figures/%d_subseq_%d_scaled_same_y.pdf' %(obsid, subseq), bbox_inches = "tight")
     plt.show()
 
 
@@ -403,11 +438,14 @@ def plot_spike_detect(filename, subseq):
     plt.savefig('figures/%d_subseq_%d_%d_%d_spikeremove.pdf' %(obsid, subseq, feed, sideband), bbox_inches = "tight")
     plt.show()
 
-    
-# 'comap-0010402-2020-01-10-225243.hd5', 'comap-0006801-2019-07-09-005158.hd5', 'comap-0006819-2019-07-10-230632.hd5'
-filenames = ['comap-0007343-2019-08-07-220019.hd5', 'comap-0007368-2019-08-09-041820.hd5',  'comap-0008210-2019-10-08-095538.hd5', 'comap-0006557-2019-06-17-172637.hd5', 'comap-0006801-2019-07-09-005158.hd5', 'comap-0008551-2019-10-22-202402.hd5']
-#plot_whole_tod(filenames[0])
-#plot_subsequence(filenames[1], 1)
-#plot_az_el_removal(filenames[-1],1)
-#plot_scaled(filenames[1],1)
-plot_spike_detect(filenames[-3], 3)
+if __name__ == "__main__":
+    # 'comap-0010402-2020-01-10-225243.hd5', 'comap-0006801-2019-07-09-005158.hd5', 'comap-0006819-2019-07-10-230632.hd5'
+    filenames = ['comap-0007343-2019-08-07-220019.hd5', 'comap-0007368-2019-08-09-041820.hd5',  'comap-0008210-2019-10-08-095538.hd5', 'comap-0006557-2019-06-17-172637.hd5', 'comap-0006801-2019-07-09-005158.hd5', 'comap-0008551-2019-10-22-202402.hd5']
+
+    f = 'comap-0007422-2019-08-11-114532.hd5'
+    plot_whole_tod(f)
+    #plot_feed(f, 16, 2)
+    #plot_subsequence(f, 2)
+    #plot_az_el_removal(filenames[-1],1)
+    #plot_scaled(f,3)
+    #plot_spike_detect(filenames[-3], 3)
