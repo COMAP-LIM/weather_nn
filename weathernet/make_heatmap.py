@@ -6,10 +6,11 @@ import matplotlib
 font = {'size'   : 14}
 matplotlib.rc('font', **font)
 
+
+"""
 lr = [1e-2, 1e-3, 1e-4, 1e-5]
 bs = [64, 128, 256, 512]
 
-"""
 all_test_accuracies = np.zeros((len(lr), len(bs)))
 all_test_accuracies[0,0] = np.load('figures/heatmaps/separate_values/heatmap_recall_lr_batch_size_owl17.npy')
 all_test_accuracies[0,1] = np.load('figures/heatmaps/separate_values/heatmap_recall_lr_batch_size_owl18.npy')
@@ -29,18 +30,32 @@ all_test_accuracies[3,2] = np.load('figures/heatmaps/separate_values/heatmap_rec
 all_test_accuracies[3,3] = np.load('figures/heatmaps/separate_values/heatmap_recall_lr_batch_size_owl21.npy')
 np.save('figures/heatmaps/heatmap_recall_lr_batch_size.npy', all_test_accuracies)
 """
-all_test_accuracies = np.load('figures/heatmaps/heatmap_validation_accuracy_lr_batch_size.npy')
+
+l1 = [8, 16, 32, 64, 128]
+l2 = [8, 16, 32, 64, 128]
+"""
+all_test_accuracies = np.zeros((len(l1), len(l2)))
+
+all_test_accuracies[0,:] = [0.8880, 0.8890, 0.8840, 0.8900, 0.8870]
+all_test_accuracies[1,:] = [0.8890, 0.8890, 0.8930, 0.8860, 0.8910]
+all_test_accuracies[2,:] = [0.8910, 0.8840, 0.8920, 0.8920, 0.8910]
+all_test_accuracies[3,:] = [0.8990, 0.8910, 0.8940, 0.8970, 0.8910]
+all_test_accuracies[4,:] = [0.9030, 0.8950, 0.8930, 0.8980, 0.8970]
+
+np.save('figures/heatmaps/heatmap_recall_l1_l2_NN.npy', all_test_accuracies)
+"""
+all_test_accuracies = np.load('figures/heatmaps/heatmap_recall_l1_l2_NN.npy')
 
 fig, ax = plt.subplots(figsize = (7, 5))
-sns.heatmap(all_test_accuracies, annot=True, fmt=".2f", ax=ax,  cmap="viridis")# cmap="YlGnBu")
-ax.set_title("Validation accuracy")
-ax.set_xlabel('Learning rate')
-ax.set_ylabel('Batch size')
-ax.set_xticklabels(lr)
-ax.set_yticklabels(bs)
+sns.heatmap(all_test_accuracies, annot=True, fmt=".4f", ax=ax,  cmap="viridis")# cmap="YlGnBu")
+ax.set_title("Recall")
+ax.set_xlabel('Neurons layer 2')
+ax.set_ylabel('Neurons layer 1')
+ax.set_xticklabels(l2)
+ax.set_yticklabels(l1)
 bottom, top = ax.get_ylim()
 ax.set_ylim(bottom + 0.5, top - 0.5)
-plt.savefig('figures/heatmaps/heatmap_validation_accuracy_lr_batch_size.pdf')
+plt.savefig('figures/heatmaps/heatmap_recall_l1_l2_NN.pdf')
 plt.show()
 
 """

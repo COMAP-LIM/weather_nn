@@ -86,8 +86,6 @@ def train_test_split(path_good, path_bad, seed=24):
 
     weather_train_max = np.max(weather_train)
     weather_train_min = np.min(weather_train)
-
-    print(weather_train)
     weather_train = (weather_train - weather_train_min)/(weather_train_max - weather_train_min)
     weather_test = (weather_test - weather_train_min)/(weather_train_max - weather_train_min)
 
@@ -176,17 +174,15 @@ def evaluate_CNN_new(X_train, y_train, X_test, y_test, std, params = False, best
         params = {'epochs': 1000, 'batch_size': 256, 'patience': 100, 'lr': 1e-5, \
                   'activation1': 'relu', 'activation2': 'relu', 'poolsize': 3} 
 
-    print(params)
-
     n_timesteps, n_features, n_outputs = X_train.shape[1], X_train.shape[2], y_train.shape[1]
     adam = optimizers.Adam(lr=params['lr']) 
     es = EarlyStopping(monitor='val_loss', patience=params['patience'], restore_best_weights=True)
 
     model = Sequential()
-    #model.add(Conv1D(filters=128, kernel_size=24, activation=params['activation1'], input_shape=(n_timesteps,n_features)))
-    model.add(Conv1D(filters=32, kernel_size=6, activation=params['activation1'], input_shape=(n_timesteps,n_features)))
-    #model.add(MaxPooling1D(pool_size = 3))
-    #model.add(Conv1D(filters=64, kernel_size=12, activation=params['activation2']))
+    model.add(Conv1D(filters=128, kernel_size=24, activation=params['activation1'], input_shape=(n_timesteps,n_features)))
+    #model.add(Conv1D(filters=32, kernel_size=6, activation=params['activation1'], input_shape=(n_timesteps,n_features)))
+    model.add(MaxPooling1D(pool_size = 3))
+    model.add(Conv1D(filters=64, kernel_size=12, activation=params['activation2']))
     #model.add(Conv1D(filters=16, kernel_size=3, activation=params['activation2']))
     model.add(Flatten())
     model.add(Dense(n_outputs, activation='softmax'))
@@ -413,8 +409,8 @@ def evaluate_NN_ps(X_train, y_train, X_test, y_test, save_model=False):
 
     model = Sequential()
     model.add(Flatten())
-    model.add(Dense(64, activation='relu'))
-    model.add(Dense(32, activation='relu'))
+    model.add(Dense(128, activation='relu'))  #64
+    model.add(Dense(128, activation='relu'))  #32
     model.add(Dense(n_outputs, activation='softmax'))
     model.compile(loss='categorical_crossentropy', optimizer=adam, metrics=['accuracy'])
 
@@ -555,7 +551,7 @@ def analyse_classification_results(model, X_test, y_test, index_test, obsids_tes
                 plt.grid()
                 plt.tight_layout()
                 plt.subplots_adjust(top=0.88)
-                plt.savefig('figures/fn_%s_%d.pdf' %(obsids_test[k], subseq))          
+                #plt.savefig('figures/fn_%s_%d.pdf' %(obsids_test[k], subseq))          
                 plt.show()
 
             
@@ -655,7 +651,7 @@ def mean_accuracy(good_samples_folder, bad_samples_folder, runs=10, weather=Fals
             NN_model, history, recall = evaluate_NN_weather(weather_train, y_train, weather_test, y_test)
             model, history, recall = evaluate_mixed(X_train, weather_train, y_train, X_test, weather_test, y_test, CNN_model=CNN_model, NN_model=NN_model)
         elif mixed_ps:
-            CNN_model, history, recall = evaluate_CNN_new(X_train, y_train, X_test, y_test, std) 
+            CNN_model, history, recall = evaluate_CNN_new(X_train, y_train, X_test, y_test, std, best_params=True) 
             NN_model, history, recall = evaluate_NN_ps(ps_train, y_train, ps_test, y_test)
             model, history, recall = evaluate_mixed(X_train, ps_train, y_train, X_test, ps_test, y_test, CNN_model=CNN_model, NN_model=NN_model)
         else:
@@ -799,54 +795,89 @@ def plot_recall(model, X_train, y_train, X_test, y_test, save=False):
 
 
 if __name__ == '__main__':
-    #good_samples_folder = 'data/training_data_results/two_means/el_az_good/' #_new/'
-    #bad_samples_folder = 'data/training_data_results/two_means/el_az_bad/' #_new/' 
+    good_samples_folder = 'data/training_data_results/two_means/el_az_good_new/'
+    bad_samples_folder = 'data/training_data_results/two_means/el_az_bad_new/' 
     final_good_samples_folder = 'data/training_data_results/final_testing/good_new/'
     final_bad_samples_folder = 'data/training_data_results/final_testing/bad_new/'
 
-    good_samples_folder =  'data/training_data_results/mixed/good/'
-    bad_samples_folder = 'data/training_data_results/mixed/bad/' 
+    #good_samples_folder =  'data/training_data_results/mixed/good/'
+    #bad_samples_folder = 'data/training_data_results/mixed/bad/' 
     #mean_accuracy(good_samples_folder, bad_samples_folder, runs=10) #, mixed_ps=True)
     #grid_search(good_samples_folder, bad_samples_folder, 'filters', 'kernel_size')
     
 
-    #X_train, y_train, ps_train, weather_train, X_test, y_test, ps_test, weather_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder, seed=2) # Seed = 2
+    X_train, y_train, ps_train, weather_train, X_test, y_test, ps_test, weather_test, indices_test, obsids_test, std = train_test_split(good_samples_folder, bad_samples_folder, seed=2) # Seed = 2
     #model, history, recall = evaluate_CNN_new(X_train, y_train, X_test, y_test, std, save_model=True, best_params=True)
-    
-    mean_accuracy(good_samples_folder, bad_samples_folder, runs=10)#, weather=False, ps=False, mixed_weather=True, mixed_ps=False)
+    #model, history, recall = evaluate_NN_ps(X_train, y_train, X_test, y_test, save_model=False)
 
-    """
+
+    #mean_accuracy(good_samples_folder, bad_samples_folder, runs=10, weather=False, ps=False, mixed_weather=False, mixed_ps=True)
+    
     std = np.loadtxt('saved_nets/weathernet_BEST_std.txt')
     patience = int(np.loadtxt('saved_nets/weathernet_BEST_patience.txt'))
     model = load_model('saved_nets/weathernet_BEST.h5')
     history = np.load('saved_nets/weathernet_BEST_history.npy', allow_pickle=True).item()
 
     
-    print(history['accuracy'][-patience])
-    print(history['val_accuracy'][-patience])
-    print(history['loss'][-patience])
-    print(history['val_loss'][-patience])
-    print()
+    plot_recall(model, X_train, y_train, X_test, y_test, save=False)
+
+    print('Training accuracy:', history['accuracy'][-patience])
+    print('Validation accuracy:', history['val_accuracy'][-patience])
+    print('Training loss:', history['loss'][-patience])
+    print('Validation loss:', history['val_loss'][-patience])
     predictions_train = model.predict(X_train)
     y_true_train = y_train.argmax(axis=-1)
     y_pred_train = predictions_train.argmax(axis=-1)
-    print(accuracy_score(y_true_train, y_pred_train))
+    print('Training recall:', recall_score(y_true_train, y_pred_train))
     predictions_test = model.predict(X_test)
     y_true_test = y_test.argmax(axis=-1)
     y_pred_test = predictions_test.argmax(axis=-1)
-    print(accuracy_score(y_true_test, y_pred_test))
+    print('Validation recall:', recall_score(y_true_test, y_pred_test))
+    print()
+
+    
+    cutoff = 0.23
+    predictions_train = model.predict(X_train)
+    y_true_train = y_train.argmax(axis=-1)
+    y_pred_train = np.zeros(len(y_true_train))
+    #y_pred_train = predictions_train.argmax(axis=-1)
+    for i, predicted_train in enumerate(predictions_train): 
+        if predicted_train[1] > cutoff:         
+            y_pred_train[i] = 1 
+        else:      
+            y_pred_train[i] = 0  
+        
+    print(accuracy_score(y_true_train, y_pred_train), recall_score(y_true_train, y_pred_train))
+    
+    predictions_test = model.predict(X_test)
+    y_true_test = y_test.argmax(axis=-1)
+    y_pred_test = np.zeros(len(y_true_test))
+    #y_pred_test = predictions_test.argmax(axis=-1)
+    for i, predicted_test in enumerate(predictions_test): 
+        if predicted_test[1] > cutoff:         
+            y_pred_test[i] = 1 
+        else:      
+            y_pred_test[i] = 0  
+    print(accuracy_score(y_true_test, y_pred_test), recall_score(y_true_test, y_pred_test))
     print()
     
     X_final_test, y_final_test, indices_final_test, obsids_final_test = final_testing_values(final_good_samples_folder, final_bad_samples_folder, std)
 
     predictions_final = model.predict(X_final_test)
     y_true_final = y_final_test.argmax(axis=-1)
-    y_pred_final = predictions_final.argmax(axis=-1)
-    print(accuracy_score(y_true_final, y_pred_final))
-
+    y_pred_final = np.zeros(len(y_true_final))
+    #y_pred_final = predictions_final.argmax(axis=-1)
+    for i, predicted_final in enumerate(predictions_final): 
+        if predicted_final[1] > cutoff:         
+            y_pred_final[i] = 1 
+        else:      
+            y_pred_final[i] = 0  
+    print(accuracy_score(y_true_final, y_pred_final), recall_score(y_true_final, y_pred_final))
+    print(confusion_matrix(y_true_final, y_pred_final, labels=[1,0]))
+    
 
     
     #plot_history(history, patience=patience, save=False)
-    #analyse_classification_results(model, X_final_test, y_final_test, indices_final_test, obsids_final_test, plot=True)
+    analyse_classification_results(model, X_final_test, y_final_test, indices_final_test, obsids_final_test, plot=True)
     #plot_recall(model, X_train, y_train, X_test, y_test, save=False)
-    """
+    

@@ -190,7 +190,7 @@ def plot_subsequence(filename, subseq=False):
     for i in range(len(mjd)):
         time.append(julian.from_jd(mjd[i], fmt='mjd'))
 
-    #tod_new = tod
+    tod_new = tod
     fig = plt.figure(figsize=(10,4))
     #plt.subplot(121)
     ax = fig.add_subplot(121)

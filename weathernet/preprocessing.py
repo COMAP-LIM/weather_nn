@@ -276,7 +276,7 @@ def spike_replace(data, spike_tops, spike_widths, plot=False):
    
     # Ensures that no spikes overlaps 
     for j in range(len(spike_tops)):
-        spike_width = np.ceil(spike_widths[j])
+        spike_width = np.ceil(spike_widths[j]/2*3)
         x1 = int(spike_tops[j] - spike_width)
         x2 = int(spike_tops[j] + spike_width)
 

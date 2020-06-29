@@ -33,7 +33,16 @@ def plot_spike_width(obsid, index, feed, sideband, width, files):
     try:
         popt, pcov = curve_fit(gaussian, (x, np.ones(len(subseq))*subseq[n]), subseq, bounds=((n_original-3, -1e10, 0),(n_original+3, 1e10, 2*n_original)))
         fitted = gaussian((x, subseq[n]), *popt)
-        half_width = popt[-1]*2 # 3 standard deviations from the spike in each direction
+        half_width = popt[-1] # 3 standard deviations from the spike in each direction
+        #print('Old width  :', width)
+        #print('New width  1:', half_width*2*2)
+        #print('New width  2:', half_width*2*3)
+        #print()
+        plt.figure()
+        plt.plot(subseq_old)
+        plt.plot(x, fitted)
+        plt.show()
+
     except:
         half_width = 0    
     return half_width*2
@@ -53,9 +62,19 @@ files.sort()
 
 obsid_spike, feed, sideband, width, ampl, index, mjd_spike, mjd_start = np.loadtxt('data/spike_data/spike_list_ALL_v4.txt', skiprows=1, unpack=True)
 
-for i in range(len(obsid_spike)):
-    new_width = plot_spike_width(obsid_spike[i], index[i], feed[i], sideband[i], width[i], files)
+feed11 = feed == 11
+obsid_spike = obsid_spike[feed11]
+index = index[feed11]
+feed = feed[feed11]
+sideband = sideband[feed11]
+ampl = ampl[feed11]
+width = width[feed11]
 
+for i in range(8000,len(obsid_spike)):
+    if ampl[i] > 7:
+        print(obsid_spike[i], feed[i], sideband[i], width[i], ampl[i])
+        new_width = plot_spike_width(obsid_spike[i], index[i], feed[i], sideband[i], width[i], files)
+    
 
 """
 obsid_7422 = obsid_spike == 9851

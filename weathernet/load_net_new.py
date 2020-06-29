@@ -231,7 +231,7 @@ def update_spikelist(spikelist_filename):
         last_checked_index = -1 
 
     print(len(files))
-    remaining_files = files[6200:]#[last_checked_index+1:]
+    remaining_files = files[7200:]#[last_checked_index+1:]
     #print(remaining_files)
 
     s = 0
@@ -243,13 +243,13 @@ def update_spikelist(spikelist_filename):
 
 
 weatherlist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/weather_data/weather_list_BEST_copy.txt'
-spikelist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/spike_data/spike_list_v5_beehive30.txt'
+spikelist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/spike_data/spike_list_v6_beehive34.txt'
 weathernet = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/saved_nets/weathernet_BEST.h5'
 
 import time
 start_time = time.time()
 
-update_weatherlist(weatherlist_filename, weathernet)
-#update_spikelist(spikelist_filename)
+#update_weatherlist(weatherlist_filename, weathernet)
+update_spikelist(spikelist_filename)
 
 print("--- %s seconds ---" % (time.time() - start_time))
