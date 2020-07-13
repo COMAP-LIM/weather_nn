@@ -11,7 +11,7 @@ Program containing functions used for preprocessing of the data. This file also 
 
 **create_dataset.py**
 
-Creates the dataset used for training the convolutional neural network from files specified in a provided text-file. This includes extracting the relevant data from the level 1 files, preprocessing the data, and writing the preprocessed data into new HDF5-files. 
+Creates the dataset used for training the convolutional neural network from files specified in a provided text-file (data/good_subsequences_ALL.txt and data/bad_subsequences_ALL.txt). This includes extracting the relevant data from the level 1 files, preprocessing the data, and writing the preprocessed data into new HDF5-files. 
 
 
 **create_net.py**
