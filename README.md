@@ -16,7 +16,7 @@ Creates the dataset used for training the convolutional neural network from file
 
 **create_net.py**
 
-Trains a one dimensional convolutional neural network on a given dataset. This file also includes a function for calculating the mean accuracy, mean recall and mean loss for a model, and plotting the tradeoff between the recall and accuracy for a given model. 
+Trains an one dimensional convolutional neural network on a given dataset. This file also includes a function for calculating the mean accuracy, mean recall and mean loss for a model over a given number of runs, and plotting the tradeoff between the recall and accuracy for a given model. 
 
 
 **load_net.py**
