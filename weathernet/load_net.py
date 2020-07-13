@@ -245,7 +245,7 @@ weathernet = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/saved_nets
 import time
 start_time = time.time()
 
-#update_weatherlist(weatherlist_filename, weathernet)
-update_spikelist(spikelist_filename)
+update_weatherlist(weatherlist_filename, weathernet)
+#update_spikelist(spikelist_filename)
 
 print("--- %s seconds ---" % (time.time() - start_time))
