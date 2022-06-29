@@ -1,16 +1,11 @@
-import keras
 import numpy as np
-import random
 import os, glob
 import matplotlib.pyplot as plt
 from keras.models import load_model
 import h5py
-import matplotlib
 import time 
 from multiprocessing import Pool
 from preprocessing import scale_two_mean, remove_elevation_azimuth_structures, remove_spikes_parallell
-import sys
-from functools import partial
 
 def subsequencegen(filename):
     obsid = int(filename[-29:-22])
