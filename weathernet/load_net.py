@@ -1,11 +1,10 @@
 import keras
 import numpy as np
 import random
-import cv2, os, glob
+import os, glob
 import matplotlib.pyplot as plt
 from keras.models import load_model
 import h5py
-import julian
 import matplotlib
 import time 
 from multiprocessing import Pool
@@ -165,7 +164,7 @@ def update_weatherlist(weatherlist_filename, weathernet):
     model = load_model(weathernet)
 
     # Make list with relevant folders
-    folders = glob.glob('/mn/stornext/d16/cmbco/comap/pathfinder/ovro/20*/')
+    folders = glob.glob('/mn/stornext/d22/cmbco/comap/protodir/level1/20*/')
     for el in folders:
         if len(el) > 53:
             folders.remove(el)
@@ -206,7 +205,7 @@ def update_weatherlist(weatherlist_filename, weathernet):
 
 def update_spikelist(spikelist_filename):
     # Make list with relevant folders
-    folders = glob.glob('/mn/stornext/d16/cmbco/comap/pathfinder/ovro/20*/')
+    folders = glob.glob('/mn/stornext/d22/cmbco/comap/protodir/level1/20*/')
     for el in folders:
         if len(el) > 53:
             folders.remove(el)
@@ -238,9 +237,9 @@ def update_spikelist(spikelist_filename):
     
 
 
-weatherlist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/weather_data/weather_list_TEST.txt'
-spikelist_filename = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/data/spike_data/spike_list_TEST.txt'
-weathernet = '/mn/stornext/d16/cmbco/comap/marenras/master/weathernet/saved_nets/weathernet_TEST.h5'
+weatherlist_filename = '/mn/stornext/d22/cmbco/comap/protodir/auxiliary/weather_list.txt'
+spikelist_filename = '/mn/stornext/d22/cmbco/comap/protodir/master/weathernet/data/spike_data/spike_list_TEST.txt'
+weathernet = '/mn/stornext/d22/cmbco/comap/protodir/COMAP_weather_nn/weathernet/saved_nets/weathernet_BEST.h5'
 
 import time
 start_time = time.time()
