@@ -18,26 +18,30 @@ def subsequencegen(filename):
     # Reading in relevant information from file
     try:
         with h5py.File(filename, 'r') as hdf:
-            try:
-                tod        = np.array(hdf['spectrometer/band_average'])
-                el         = np.array(hdf['/spectrometer/pixel_pointing/pixel_el'])
-                az         = np.array(hdf['/spectrometer/pixel_pointing/pixel_az'])
-                features   = np.array(hdf['spectrometer/features'])
-                mjd        = np.array(hdf['spectrometer/MJD'])
-                feeds      = np.array(hdf['spectrometer/feeds'])
-                MJD_start  = float(hdf['spectrometer/MJD'][0])
-                attributes = hdf['comap'].attrs
+            tod        = np.array(hdf['spectrometer/band_average'])
+            el         = np.array(hdf['/spectrometer/pixel_pointing/pixel_el'])
+            az         = np.array(hdf['/spectrometer/pixel_pointing/pixel_az'])
+            features   = np.array(hdf['spectrometer/features'])
+            mjd        = np.array(hdf['spectrometer/MJD'])
+            feeds      = np.array(hdf['spectrometer/feeds'])
+            MJD_start  = float(hdf['spectrometer/MJD'][0])
+            attributes = hdf['comap'].attrs
+            if not isinstance(attributes['source'], str):
                 target     = attributes['source'].decode()
-            except:
-                # 'Not sufficient information in the level 1 file'
-                return None, None, None, None, None, None
+            else:
+                target     = attributes['source']
     except:
+        print("Something missing from level1 file.")
+        return None, None, None, None, None, None
+
+    if np.sum(~np.isfinite(el)) > 0 or np.sum(~np.isfinite(az)) > 0:
+        print("Nans in az or el.")
         return None, None, None, None, None, None
 
     if target[:2] != 'co':
         # 'Target is not a co-field, but %s.' %target
+        print("Target is not a co-field.")
         return None, None, None, None, None, None
-        
     # Removing Tsys measurements 
     boolTsys = (features & 1 << 13 != 8192)
     indexTsys = np.where(boolTsys == False)[0]
@@ -48,6 +52,7 @@ def subsequencegen(filename):
         num_Tsys_values = np.max(np.where(boolTsys[:int(len(boolTsys)/2)] == False)[0]) + 1
     else:
         # 'No Tsys measurements / only one measurement.'
+        print("Found only zero or one calibration.")
         return None, None, None, None, None, None
 
     try:
@@ -57,11 +62,13 @@ def subsequencegen(filename):
         mjd = mjd[boolTsys]
     except:
         # 'Not corresponding length of boolTsys and number of samples.'
+        print("Not corresponding length of boolTsys and number of samples.")
         return None, None, None, None, None, None
 
 
     if np.shape(tod)[2] < subseq_length:
         # 'Too short tod.'
+        print("Too short TOD.")
         return None, None, None, None, None, None
 
     # Removing NaNs     
