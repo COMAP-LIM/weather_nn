@@ -102,10 +102,14 @@ def remove_elevation_azimuth_structures(data, el, az, plot=False):
                     continue
                 else:
                     if i == num_parts-1:
-                        popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:],el[feed, \
-                                        part*i:], az[feed, part*i:]), data[feed, sideband, part*i:])
-                        g = popt[0]
-                        a = popt[1]
+                        try:
+                            popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:],el[feed, \
+                                            part*i:], az[feed, part*i:]), data[feed, sideband, part*i:])
+                            g = popt[0]
+                            a = popt[1]
+                        except:
+                            g = 0
+                            a = 0
 
                         temp[part*i:] = g/np.sin(el[feed, part*i:]*np.pi/180) + \
                                     a*az[feed, part*i:]
@@ -114,11 +118,15 @@ def remove_elevation_azimuth_structures(data, el, az, plot=False):
 
                         fitted[part*i:] = elevation_azimuth_template((t[part*i:],el[feed, part*i:], az[feed, part*i:]), *popt)
                     else:
-                        popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:part*(i+1)], \
-                                el[feed, part*i:part*(i+1)], az[feed,  \
-                                part*i:part*(i+1)]), data[feed, sideband, part*i:part*(i+1)])
-                        g = popt[0]
-                        a = popt[1]
+                        try:
+                            popt, pcov = curve_fit(elevation_azimuth_template, (t[part*i:part*(i+1)], \
+                                    el[feed, part*i:part*(i+1)], az[feed,  \
+                                    part*i:part*(i+1)]), data[feed, sideband, part*i:part*(i+1)])
+                            g = popt[0]
+                            a = popt[1]
+                        except:
+                            g = 0
+                            a = 0
 
                         temp[part*i:part*(i+1)] = g/np.sin(el[feed, part*i:part*(i+1)] \
                                         *np.pi/180) + a*az[feed, part*i:part*(i+1)]
