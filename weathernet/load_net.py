@@ -1,5 +1,6 @@
 import numpy as np
 import os, glob
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Keep TF from raising errors which are actually just warnings.
 import matplotlib.pyplot as plt
 from keras.models import load_model
 import h5py
@@ -123,7 +124,7 @@ def find_spikes(filename, spikelist_filename):
                     feed_nummeration.append((feed,sideband))
 
      
-            with Pool() as pool:
+            with Pool(32) as pool:
                 spike_list = pool.map(remove_spikes_parallell, all_feeds)
             
 
