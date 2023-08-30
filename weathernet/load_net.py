@@ -180,27 +180,32 @@ def update_weatherlist(weatherlist_filename, weathernet):
 
     # Check the last obsid written to file
     if os.path.exists(weatherlist_filename):
-        last_checked_obsid = np.loadtxt(weatherlist_filename, dtype=int, usecols=(0))[-1]
-        last_checked = '%07d' %last_checked_obsid
-        last_checked_filename = [f for f in files if last_checked in f][0]
-        last_checked_index = files.index(last_checked_filename)
+        obsids_already_done = np.loadtxt(weatherlist_filename, dtype=int, usecols=(0))
+        print(obsids_already_done)
+
+        # last_checked_obsid = np.loadtxt(weatherlist_filename, dtype=int, usecols=(0))[-1]
+        # last_checked = '%07d' %last_checked_obsid
+        # last_checked_filename = [f for f in files if last_checked in f][0]
+        # last_checked_index = files.index(last_checked_filename)
     else:
-        last_checked_index = -1 
+        obsids_already_done = []
+        #last_checked_index = -1 
 
 
     file_subseq = open(weatherlist_filename, 'a')
     file_obsid = open(weatherlist_filename[:-4]+'_obsid.txt', 'a')
 
-    for f in files[last_checked_index+1:]:
+    for f in files:
         obsid, predictions, MJD_start = find_weather(model, std, f)
-        print(obsid)
-        if MJD_start == None:
-            print('passing')
-            pass
-        else:
-            for j in range(len(predictions)):
-                file_subseq.write('%d    %d    %.4f   %f\n' %(int(obsid), j+1, predictions[j][1], MJD_start))
-            file_obsid.write('%d    %.4f    %.4f   %f \n' %(int(obsid), max(predictions[:,1]), np.median(predictions[:,1]), MJD_start))
+        if obsid not in obsids_already_done:
+            print(f"Starting obsid {obsid}.")
+            if MJD_start == None:
+                print('passing')
+                pass
+            else:
+                for j in range(len(predictions)):
+                    file_subseq.write('%d    %d    %.4f   %f\n' %(int(obsid), j+1, predictions[j][1], MJD_start))
+                file_obsid.write('%d    %.4f    %.4f   %f \n' %(int(obsid), max(predictions[:,1]), np.median(predictions[:,1]), MJD_start))
             
 
         
