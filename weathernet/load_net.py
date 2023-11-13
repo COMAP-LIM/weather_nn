@@ -161,7 +161,7 @@ def find_weather(model, std, filename):
         return [obsid, predictions, MJD_start]
 
 
-def update_weatherlist(weatherlist_filename, weathernet):
+def update_weatherlist(weatherlist_filename, weatherlist_ignore_filename, weathernet):
     # Load model 
     std = np.loadtxt(weathernet[:-3] + '_std.txt')
     model = load_model(weathernet)
@@ -181,31 +181,34 @@ def update_weatherlist(weatherlist_filename, weathernet):
     # Check the last obsid written to file
     if os.path.exists(weatherlist_filename):
         obsids_already_done = np.loadtxt(weatherlist_filename, dtype=int, usecols=(0))
-        print(obsids_already_done)
-
-        # last_checked_obsid = np.loadtxt(weatherlist_filename, dtype=int, usecols=(0))[-1]
-        # last_checked = '%07d' %last_checked_obsid
-        # last_checked_filename = [f for f in files if last_checked in f][0]
-        # last_checked_index = files.index(last_checked_filename)
+        obsids_to_ignore = np.loadtxt(weatherlist_ignore_filename, dtype=int, usecols=(0))
     else:
         obsids_already_done = []
-        #last_checked_index = -1 
-
+        obsids_to_ignore = []
 
     file_subseq = open(weatherlist_filename, 'a')
+    file_ignore = open(weatherlist_ignore_filename, 'a')
     file_obsid = open(weatherlist_filename[:-4]+'_obsid.txt', 'a')
 
     for f in files:
-        obsid, predictions, MJD_start = find_weather(model, std, f)
+        obsid = int(f[-29:-22])
         if obsid not in obsids_already_done:
-            print(f"Starting obsid {obsid}.")
-            if MJD_start == None:
-                print('passing')
-                pass
-            else:
-                for j in range(len(predictions)):
-                    file_subseq.write('%d    %d    %.4f   %f\n' %(int(obsid), j+1, predictions[j][1], MJD_start))
-                file_obsid.write('%d    %.4f    %.4f   %f \n' %(int(obsid), max(predictions[:,1]), np.median(predictions[:,1]), MJD_start))
+            if obsid not in obsids_to_ignore:
+                print(f"Starting obsid {obsid}.")
+                obsid, predictions, MJD_start = find_weather(model, std, f)
+                if MJD_start == None:
+                    print('passing')
+                    file_ignore.write(f"{obsid}\n")
+                    pass
+                else:
+                    for j in range(len(predictions)):
+                        file_subseq.write('%d    %d    %.4f   %f\n' %(int(obsid), j+1, predictions[j][1], MJD_start))
+                    file_obsid.write('%d    %.4f    %.4f   %f \n' %(int(obsid), max(predictions[:,1]), np.median(predictions[:,1]), MJD_start))
+                # else:
+                #     file_ignore.write(f"{obsid}")
+    file_subseq.close()
+    file_ignore.close()
+    file_obsid.close()
             
 
         
@@ -213,7 +216,7 @@ def update_weatherlist(weatherlist_filename, weathernet):
 
 def update_spikelist(spikelist_filename):
     # Make list with relevant folders
-    folders = glob.glob('/mn/stornext/d22/cmbco/comap/protodir/level1/20*/')
+    folders = glob.glob('/mn/stornext/d16/cmbco/comap/data/level1/20*/')
     for el in folders:
         if len(el) > 53:
             folders.remove(el)
@@ -245,14 +248,15 @@ def update_spikelist(spikelist_filename):
     
 
 
-weatherlist_filename = '/mn/stornext/d22/cmbco/comap/protodir/auxiliary/weather_list.txt'
-spikelist_filename = '/mn/stornext/d22/cmbco/comap/protodir/master/weathernet/data/spike_data/spike_list_TEST.txt'
-weathernet = '/mn/stornext/d22/cmbco/comap/protodir/COMAP_weather_nn/weathernet/saved_nets/weathernet_BEST.h5'
+weatherlist_ignore_filename = '/mn/stornext/d16/cmbco/comap/data/aux_data/weather_list_ignorefiles.txt'
+weatherlist_filename = '/mn/stornext/d16/cmbco/comap/data/aux_data/weather_list.txt'
+#spikelist_filename = '/mn/stornext/d22/cmbco/comap/protodir/master/weathernet/data/spike_data/spike_list_TEST.txt'
+weathernet = '/mn/stornext/d16/cmbco/comap/src/COMAP_weather_nn/weathernet/saved_nets/weathernet_BEST.h5'
 
 import time
 start_time = time.time()
 
-update_weatherlist(weatherlist_filename, weathernet)
+update_weatherlist(weatherlist_filename, weatherlist_ignore_filename, weathernet)
 #update_spikelist(spikelist_filename)
 
 print("--- %s seconds ---" % (time.time() - start_time))
